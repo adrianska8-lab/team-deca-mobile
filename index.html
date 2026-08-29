@@ -172,6 +172,17 @@
           <div class="sec-title">👥 Meus Alunos</div>
         </div>
 
+        <!-- CONTATO DO TREINADOR (rodapé do PDF) -->
+        <details class="gcal-config mb12">
+          <summary>📞 Meu Contato: <span id="coachContactStatus">não configurado</span></summary>
+          <div class="mt12">
+            <div style="color:rgba(255,255,255,.4);font-size:11px;margin-bottom:8px;">Aparece no rodapé de todo PDF exportado, para o aluno saber como falar com você.</div>
+            <label class="lbl">Contato (WhatsApp, Instagram, etc.)</label>
+            <input type="text" id="coachContact" placeholder="Ex: WhatsApp (41) 99999-9999">
+            <button onclick="saveCoachContact()" class="btn btn-outline btn-block mt8">Salvar Contato</button>
+          </div>
+        </details>
+
         <!-- GOOGLE AGENDA -->
         <details class="gcal-config mb12">
           <summary>📅 Google Agenda: <span id="gcalStatusText">não configurado</span></summary>

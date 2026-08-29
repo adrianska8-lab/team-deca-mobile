@@ -371,6 +371,16 @@ function sendCobranca(id){
   window.open(`https://wa.me/${digits}?text=${encodeURIComponent(msg)}`, '_blank');
 }
 
+// ===================== CONTATO DO TREINADOR (aparece no rodapé do PDF) =====================
+let coachContact = lsGet('td_mobile_coach_contact') || '';
+function saveCoachContact(){
+  const v = document.getElementById('coachContact').value.trim();
+  coachContact = v;
+  lsSet('td_mobile_coach_contact', v);
+  document.getElementById('coachContactStatus').textContent = v ? 'salvo ✓' : 'não configurado';
+  alert('Contato salvo!');
+}
+
 // ===================== GOOGLE AGENDA (OAuth client-side, sem backend) =====================
 const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
 let gcalClientId    = lsGet('td_mobile_gcal_client_id') || '';
@@ -687,11 +697,12 @@ function foodOptions(sel){
 }
 function addMeal(){
   mealIdCtr++;
-  meals.push({id:mealIdCtr, name:`Refeição ${mealIdCtr}`, items:[]});
+  meals.push({id:mealIdCtr, name:`Refeição ${mealIdCtr}`, time:'', items:[]});
   renderMeals();
 }
 function removeMeal(id){ meals=meals.filter(m=>m.id!==id); renderMeals(); }
 function setMealName(id,v){ const m=meals.find(m=>m.id===id); if(m) m.name=v; }
+function setMealTime(id,v){ const m=meals.find(m=>m.id===id); if(m) m.time=v; }
 function addItem(mealId){ const m=meals.find(m=>m.id===mealId); if(m){ m.items.push({fi:0,qty:100}); renderMeals(); } }
 function removeItem(mealId,idx){ const m=meals.find(m=>m.id===mealId); if(m){ m.items.splice(idx,1); renderMeals(); } }
 function setItem(mealId,idx,field,val){
@@ -823,6 +834,7 @@ function renderMeals(){
     return `<div class="meal-card">
       <div class="meal-card-hdr">
         <input class="meal-name-inp" type="text" value="${meal.name}" onchange="setMealName(${meal.id},this.value)" placeholder="Nome da refeição...">
+        <input class="meal-time-inp" type="time" value="${meal.time||''}" onchange="setMealTime(${meal.id},this.value)">
         <div class="meal-actions">
           <button onclick="addItem(${meal.id})" class="btn btn-outline" style="padding:8px 12px;font-size:12px;">+ Alimento</button>
           <button onclick="removeMeal(${meal.id})" class="btn btn-red btn-icon-only">✕</button>
@@ -926,6 +938,7 @@ function exportPDF(){
     const water    = document.getElementById('sWater').value;
     const tot      = allTotals();
     const chartImg = chart ? chart.toBase64Image() : '';
+    const version  = currentStudentId ? ((students.find(s=>s.id===currentStudentId)?.pdfHistory?.length)||0)+1 : 1;
 
     const compRows = [], ergoRows = [];
     document.querySelectorAll('#compBody .entry-row').forEach(row => {
@@ -937,7 +950,7 @@ function exportPDF(){
       ergoRows.push([ins[0]?.value||'', ins[1]?.value||'', ins[2]?.value||'']);
     });
 
-    const body = buildPDF({name,age,weight,height,tmb,get,logo,obs,water,freeDays,tot,chartImg,compRows,ergoRows});
+    const body = buildPDF({name,age,weight,height,tmb,get,logo,obs,water,freeDays,tot,chartImg,compRows,ergoRows,version,coachContact});
 
     if(currentStudentId){
       const st = students.find(s=>s.id===currentStudentId);
@@ -983,6 +996,9 @@ function exportPDF(){
     padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); display: flex; align-items: center; justify-content: space-between;
     font-family: 'Rajdhani', sans-serif; gap: 12px; flex-wrap: wrap;
   }
+  /* Modo de impressão em papel: inverte fundo escuro -> claro, imagens ficam normais */
+  body.print-light { filter: invert(1) hue-rotate(180deg); }
+  body.print-light img { filter: invert(1) hue-rotate(180deg); }
 </style>
 </head>
 <body>
@@ -994,10 +1010,16 @@ ${body}
     <span style="color:#00aaff;font-weight:700;">1.</span> Toque em <strong>Compartilhar / Imprimir</strong> e escolha <strong>Salvar em PDF</strong><br>
     <span style="color:#00aaff;font-weight:700;">2.</span> No Android/Chrome, use "Salvar como PDF" no diálogo de impressão
   </div>
-  <button onclick="window.print()"
-    style="background:linear-gradient(135deg,#003d82,#0066cc);color:#fff;border:none;padding:12px 22px;border-radius:6px;font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:700;font-size:15px;letter-spacing:1px;cursor:pointer;min-height:44px;">
-    🖨️ SALVAR / IMPRIMIR
-  </button>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;">
+    <button onclick="document.body.classList.toggle('print-light'); this.textContent = document.body.classList.contains('print-light') ? '🌙 VOLTAR AO ESCURO' : '📄 VERSÃO P/ IMPRESSÃO';"
+      style="background:transparent;color:#00aaff;border:1px solid #00aaff;padding:12px 18px;border-radius:6px;font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:700;font-size:14px;letter-spacing:.5px;cursor:pointer;min-height:44px;">
+      📄 VERSÃO P/ IMPRESSÃO
+    </button>
+    <button onclick="window.print()"
+      style="background:linear-gradient(135deg,#003d82,#0066cc);color:#fff;border:none;padding:12px 22px;border-radius:6px;font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:700;font-size:15px;letter-spacing:1px;cursor:pointer;min-height:44px;">
+      🖨️ SALVAR / IMPRIMIR
+    </button>
+  </div>
 </div>
 
 <script>
@@ -1044,11 +1066,26 @@ function pdfTHC(tx){ return `<th style="padding:9px 12px;text-align:center;color
 function pdfTDC(tx){ return `<td style="padding:8px 12px;color:#d0d8e8;font-size:13px;border-bottom:1px solid #1a3d6e;text-align:center;">${tx}</td>`; }
 
 function buildPDF(d){
-  const {name,age,weight,height,tmb,get,logo,obs,water,freeDays,tot,chartImg,compRows,ergoRows} = d;
+  const {name,age,weight,height,tmb,get,logo,obs,water,freeDays,tot,chartImg,compRows,ergoRows,version,coachContact} = d;
   const waterHTML = water ? `${water} ml (${(parseFloat(water)/1000).toFixed(1)} L)` : '—';
   const freeDaysHTML = (freeDays && freeDays.length)
     ? DAY_ORDER.filter(d2=>freeDays.includes(d2)).map(d2=>DAY_ABBR[d2]).join(', ')
     : 'Nenhuma';
+
+  const getNum = parseFloat((get||'').replace(/\./g,'').replace(',','.'));
+  const calDiff = (!isNaN(getNum) && getNum>0) ? tot.cal - getNum : null;
+  const calDiffPct = calDiff!==null ? Math.round(Math.abs(calDiff)/getNum*100) : null;
+  const calCompareHTML = calDiff!==null ? `
+    <div style="margin-top:14px;background:${calDiff<0?'rgba(0,200,100,.08)':'rgba(255,140,0,.08)'};border:1px solid ${calDiff<0?'rgba(0,200,100,.3)':'rgba(255,150,0,.3)'};border-radius:4px;padding:12px 16px;font-size:13px;color:#e8f0fa;font-family:'Rajdhani',sans-serif;">
+      <strong style="color:${calDiff<0?'#00cc66':'#ffaa33'};font-family:'Barlow Condensed',sans-serif;">${Math.abs(calDiff)<1?'Dieta em manutenção':(calDiff<0?'Déficit calórico':'Superávit calórico')}:</strong>
+      Esta dieta soma <strong>${f1(tot.cal)} kcal</strong>${Math.abs(calDiff)<1?', igual ao seu GET.':` — ${f1(Math.abs(calDiff))} kcal ${calDiff<0?'abaixo':'acima'} do seu GET (${calDiffPct}% de ${calDiff<0?'déficit':'superávit'}).`}
+    </div>` : '';
+
+  const pageFooter = (n) => `
+    <div style="position:absolute;bottom:28px;left:40px;right:40px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(0,170,255,.2);padding-top:14px;">
+      <div style="font-size:11px;color:rgba(255,255,255,.25);font-style:italic;font-family:'Barlow Condensed',sans-serif;">TEAM DECA — Consultoria Fitness Profissional${coachContact ? ' · '+coachContact : ''}</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.25);font-family:'Rajdhani',sans-serif;">${new Date().toLocaleDateString('pt-BR')} · Página ${n}/4</div>
+    </div>`;
   const waterFreeBarHTML = `
     <div style="display:flex;gap:14px;margin-bottom:18px;">
       <div style="flex:1;background:#071629;border:1px solid #1a3d6e;border-top:3px solid #00aaff;border-radius:4px;padding:12px 16px;">
@@ -1085,8 +1122,9 @@ function buildPDF(d){
     }).join('');
     return `
       <div style="margin-bottom:18px;">
-        <div style="background:#0b1e45;padding:9px 14px;border-left:4px solid #00aaff;">
+        <div style="background:#0b1e45;padding:9px 14px;border-left:4px solid #00aaff;display:flex;justify-content:space-between;align-items:center;">
           <span style="font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:700;font-size:15px;color:#00aaff;text-transform:uppercase;letter-spacing:1px;">${meal.name}</span>
+          ${meal.time ? `<span style="font-family:'Rajdhani',sans-serif;font-size:12px;color:rgba(255,255,255,.5);">🕐 ${meal.time}</span>` : ''}
         </div>
         <table style="width:100%;border-collapse:collapse;background:#071629;border:1px solid #1a3d6e;">
           <thead><tr>${pdfTH('Alimento')}${pdfTHC('Qtd')}${pdfTHC('Kcal')}${pdfTHC('Carb')}${pdfTHC('Prot')}${pdfTHC('Gord')}</tr></thead>
@@ -1172,11 +1210,12 @@ function buildPDF(d){
       </div>` : ''}
     </div>
 
+    <div style="position:absolute;bottom:14px;right:24px;font-size:10px;color:rgba(255,255,255,.2);font-family:'Rajdhani',sans-serif;">Versão ${version||1} · ${new Date().toLocaleDateString('pt-BR')} · Página 1/4</div>
     <div style="position:absolute;bottom:0;left:0;right:0;height:4px;background:linear-gradient(90deg,transparent,#00aaff 30%,#0055cc 70%,transparent);"></div>
   </div>
 
   <!-- PAGE 2: DIET -->
-  <div class="pb" style="width:794px;min-height:1122px;background:#000;padding:40px;page-break-before:always;">
+  <div class="pb" style="width:794px;min-height:1122px;background:#000;padding:40px;page-break-before:always;position:relative;">
     ${pgHdr('Planejamento Alimentar')}
     ${waterFreeBarHTML}
     ${mealTablesHTML}
@@ -1208,14 +1247,17 @@ function buildPDF(d){
         </div>
         ${chartImg ? `<div style="flex-shrink:0;"><img src="${chartImg}" style="width:170px;height:170px;object-fit:contain;"></div>` : ''}
       </div>
+      ${calCompareHTML}
     </div>
+    ${pageFooter(2)}
   </div>
 
   <!-- PAGE 3: SUBSTITUIÇÕES -->
-  <div class="pb" style="width:794px;min-height:1122px;background:#000;padding:40px;page-break-before:always;">
+  <div class="pb" style="width:794px;min-height:1122px;background:#000;padding:40px;page-break-before:always;position:relative;">
     ${pgHdr('Alimentos de Substituição')}
     <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:18px;">Equivalência calórica calculada com base na tabela TACO. Troque pelo substituto na quantidade indicada para manter os macros da dieta.</div>
     ${substTableHTML}
+    ${pageFooter(3)}
   </div>
 
   <!-- PAGE 4: EXTRAS -->
@@ -1243,10 +1285,7 @@ function buildPDF(d){
       <div style="background:#071629;border:1px solid #1a3d6e;border-radius:4px;padding:16px;">${obsHTML}</div>
     </div>
 
-    <div style="position:absolute;bottom:28px;left:40px;right:40px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(0,170,255,.2);padding-top:14px;">
-      <div style="font-size:11px;color:rgba(255,255,255,.25);font-style:italic;font-family:'Barlow Condensed',sans-serif;">TEAM DECA — Consultoria Fitness Profissional</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.25);font-family:'Rajdhani',sans-serif;">${new Date().toLocaleDateString('pt-BR')}</div>
-    </div>
+    ${pageFooter(4)}
   </div>
 
 </div>`;
@@ -1515,6 +1554,10 @@ renderMeals();
 renderFreeDaysUI();
 renderStudentsList();
 updateStudentStatusLine();
+if(coachContact){
+  document.getElementById('coachContact').value = coachContact;
+  document.getElementById('coachContactStatus').textContent = 'salvo ✓';
+}
 if(gcalClientId){
   document.getElementById('gcalClientId').value = gcalClientId;
   updateGcalStatus('desconectado (toque em Conectar)');
