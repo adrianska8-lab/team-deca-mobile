@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0">
+<title>TEAM DECA — Consultoria Fitness (Mobile)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,400;0,700;1,400;1,700;1,900&family=Rajdhani:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- MODAL: Import PDF -->
+<div id="modalImport" class="modal-bg hidden">
+  <div class="modal-box">
+    <div class="sheet-handle"></div>
+    <div class="modal-hdr">
+      <div class="sec-title">📥 Importar Planejamento</div>
+      <button onclick="closeImportModal()" class="btn btn-red btn-icon-only">✕</button>
+    </div>
+
+    <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:14px;padding:10px;background:rgba(0,170,255,.06);border-left:2px solid rgba(0,170,255,.3);border-radius:4px;">
+      Selecione um PDF exportado por este sistema (ou pela versão desktop). Os dados do aluno, refeições, manipulados, ergogênicos e observações serão preenchidos automaticamente.
+    </div>
+
+    <label class="btn btn-blue btn-block" style="cursor:pointer;">
+      📄 Selecionar arquivo PDF
+      <input type="file" id="importFileInput" accept=".pdf,application/pdf" onchange="processImportFile(this)" style="display:none;">
+    </label>
+
+    <div id="importStatus" style="margin-top:12px;font-size:13px;min-height:20px;"></div>
+    <div id="importPreview" style="margin-top:4px;"></div>
+
+    <div id="importActions" class="hidden mt16">
+      <button onclick="applyImport()" class="btn btn-green btn-block" style="font-size:15px;padding:14px;">
+        ✅ PREENCHER FORMULÁRIO
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Agendar Feedback (Google Agenda) -->
+<div id="modalFeedback" class="modal-bg hidden">
+  <div class="modal-box">
+    <div class="sheet-handle"></div>
+    <div class="modal-hdr">
+      <div class="sec-title">📅 Agendar Feedback</div>
+      <button onclick="closeFeedbackModal()" class="btn btn-red btn-icon-only">✕</button>
+    </div>
+    <div id="feedbackModalStudentName" style="color:var(--neon);font-weight:600;font-size:15px;margin-bottom:14px;"></div>
+    <div class="g2">
+      <div><label class="lbl">Data</label><input type="date" id="fbDate"></div>
+      <div><label class="lbl">Horário</label><input type="time" id="fbTime"></div>
+    </div>
+    <div class="mt12">
+      <label class="lbl">Duração</label>
+      <select id="fbDuration">
+        <option value="15">15 minutos</option>
+        <option value="30" selected>30 minutos</option>
+        <option value="45">45 minutos</option>
+        <option value="60">60 minutos</option>
+      </select>
+    </div>
+    <div id="feedbackModalStatus" style="margin-top:12px;font-size:13px;min-height:18px;"></div>
+    <button onclick="createFeedbackEvent()" class="btn btn-green btn-block mt16" id="fbCreateBtn">Criar Evento na Agenda</button>
+  </div>
+</div>
+
+<!-- MODAL: Food Manager -->
+<div id="modalFood" class="modal-bg hidden">
+  <div class="modal-box">
+    <div class="sheet-handle"></div>
+    <div class="modal-hdr">
+      <div class="sec-title">Cadastrar Alimento</div>
+      <button onclick="closeModal()" class="btn btn-red btn-icon-only">✕</button>
+    </div>
+    <div style="display:grid;gap:12px;">
+      <div>
+        <label class="lbl">Nome do Alimento</label>
+        <input id="fName" type="text" placeholder="Ex: Batata-doce">
+      </div>
+      <div>
+        <label class="lbl">Unidade de Medida</label>
+        <select id="fUnit">
+          <option value="g">g — Grama</option>
+          <option value="ml">ml — Mililitro</option>
+          <option value="un">un — Unidade</option>
+          <option value="fatia">fatia</option>
+          <option value="col. sopa">col. sopa</option>
+          <option value="col. chá">col. chá</option>
+          <option value="xícara">xícara</option>
+          <option value="porção">porção</option>
+          <option value="scoop">scoop</option>
+          <option value="cápsula">cápsula</option>
+        </select>
+      </div>
+      <div>
+        <label class="lbl">Base de Cálculo dos Macros</label>
+        <select id="fCalcMode" onchange="updateCalcHint()">
+          <option value="per100">Por 100g / 100ml</option>
+          <option value="perUnit">Por unidade — macros de 1 unidade</option>
+          <option value="wpu">Por unidade com peso médio</option>
+        </select>
+      </div>
+      <div id="wpuWrap" style="display:none;">
+        <label class="lbl">Peso médio por unidade (g) — ex: 1 ovo ≈ 50g</label>
+        <input id="fWpu" type="number" inputmode="decimal" placeholder="50" min="0" step="0.1">
+      </div>
+      <div id="calcHint" style="color:rgba(255,255,255,.35);font-size:11px;padding:6px 8px;background:rgba(0,170,255,.06);border-left:2px solid rgba(0,170,255,.3);border-radius:4px;">
+        Macros referentes a <strong style="color:rgba(255,255,255,.6);">100g / 100ml</strong>. Na dieta, informe a quantidade em gramas ou ml.
+      </div>
+      <div class="g2">
+        <div><label class="lbl" id="fCalLbl">Calorias (por 100g/ml)</label><input id="fCal" type="number" inputmode="decimal" placeholder="86" min="0"></div>
+        <div><label class="lbl">Carboidratos (g)</label><input id="fCarb" type="number" inputmode="decimal" placeholder="20" min="0" step="0.1"></div>
+      </div>
+      <div class="g2">
+        <div><label class="lbl">Proteínas (g)</label><input id="fProt" type="number" inputmode="decimal" placeholder="1.6" min="0" step="0.1"></div>
+        <div><label class="lbl">Gorduras (g)</label><input id="fFat" type="number" inputmode="decimal" placeholder="0.1" min="0" step="0.1"></div>
+      </div>
+    </div>
+    <button onclick="saveFood()" class="btn btn-blue btn-block mt16">+ Salvar Alimento</button>
+    <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
+    <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+      <div style="color:rgba(255,255,255,.4);font-size:11px;text-transform:uppercase;letter-spacing:1px;">Banco de Alimentos</div>
+      <span style="font-size:10px;color:rgba(255,255,255,.25);">
+        <span style="color:#00cc66;">■</span> TACO &nbsp;
+        <span style="color:#ffcc44;">■</span> por unidade
+      </span>
+    </div>
+    <input type="text" placeholder="🔍  Buscar alimento..." oninput="setFoodFilter(this.value)" style="margin-bottom:8px;font-size:14px;">
+    <div id="foodBankList" style="max-height:44vh;overflow-y:auto;"></div>
+  </div>
+</div>
+
+<div class="app-shell">
+
+  <!-- HEADER -->
+  <div class="m-header" id="mHeader">
+    <div class="hdr-row">
+      <div>
+        <div class="brand">TEAM DECA</div>
+        <div class="slogan">Transforme seu corpo. Supere seus limites.</div>
+      </div>
+      <label class="logo-fab" title="Carregar logo">
+        📁
+        <input type="file" id="logoInput" accept="image/*" onchange="uploadLogo(this)" style="display:none;">
+      </label>
+    </div>
+    <img id="logoPreview" src="" alt="Logo">
+  </div>
+
+  <!-- TABS -->
+  <nav class="tabbar" id="tabbar">
+    <button class="tab-btn active" data-tab="alunos" onclick="switchTab('alunos')"><span class="tab-ic">👥</span>Alunos</button>
+    <button class="tab-btn" data-tab="aluno" onclick="switchTab('aluno')"><span class="tab-ic">👤</span>Aluno</button>
+    <button class="tab-btn" data-tab="dieta" onclick="switchTab('dieta')"><span class="tab-ic">🥗</span>Dieta</button>
+    <button class="tab-btn" data-tab="manip" onclick="switchTab('manip')"><span class="tab-ic">💊</span>Manip.</button>
+    <button class="tab-btn" data-tab="ergo" onclick="switchTab('ergo')"><span class="tab-ic">⚡</span>Ergo</button>
+    <button class="tab-btn" data-tab="obs" onclick="switchTab('obs')"><span class="tab-ic">📋</span>Obs.</button>
+  </nav>
+
+  <!-- CONTENT -->
+  <main class="tab-content">
+
+    <!-- ALUNOS (lista salva) -->
+    <section id="tab-alunos" class="tab-pane active">
+      <div class="sec">
+        <div class="sec-head">
+          <div class="sec-title">👥 Meus Alunos</div>
+        </div>
+
+        <!-- GOOGLE AGENDA -->
+        <details class="gcal-config mb12">
+          <summary>📅 Google Agenda: <span id="gcalStatusText">não configurado</span></summary>
+          <div class="mt12">
+            <div style="color:rgba(255,255,255,.4);font-size:11px;margin-bottom:8px;">Cole o Client ID OAuth gerado no Google Cloud Console (veja as instruções fornecidas).</div>
+            <label class="lbl">Client ID OAuth</label>
+            <input type="text" id="gcalClientId" placeholder="xxxxxxxx.apps.googleusercontent.com">
+            <button onclick="saveGcalClientId()" class="btn btn-outline btn-block mt8">Salvar Client ID</button>
+            <button onclick="connectGoogleCalendar()" class="btn btn-blue btn-block mt8">🔗 Conectar Google Agenda</button>
+          </div>
+        </details>
+
+        <button onclick="newAtendimento()" class="btn btn-blue btn-block mb12">+ Novo Atendimento</button>
+        <input type="text" placeholder="🔍  Buscar por nome ou telefone..." oninput="setStudentFilter(this.value)" class="mb12">
+        <div id="studentsList"></div>
+      </div>
+    </section>
+
+    <!-- ALUNO -->
+    <section id="tab-aluno" class="tab-pane">
+      <div class="sec">
+        <div class="sec-title mb8">👤 Cadastro do Aluno</div>
+        <div class="student-status-line" id="studentStatusLine">🆕 Novo atendimento (não salvo)</div>
+        <div class="mb12 mt12">
+          <label class="lbl">Nome Completo</label>
+          <input type="text" id="sName" placeholder="Nome do aluno...">
+        </div>
+        <div class="g2">
+          <div><label class="lbl">Idade (anos)</label><input type="number" inputmode="numeric" id="sAge" placeholder="25" min="1" max="120" oninput="calcTMB()"></div>
+          <div><label class="lbl">Peso (kg)</label><input type="number" inputmode="decimal" id="sWeight" placeholder="70" min="1" step="0.1" oninput="calcTMB()"></div>
+        </div>
+        <div class="g2 mt12">
+          <div><label class="lbl">Altura (cm)</label><input type="number" inputmode="numeric" id="sHeight" placeholder="170" min="50" max="250" oninput="calcTMB()"></div>
+          <div>
+            <label class="lbl">Gênero</label>
+            <select id="sGender" onchange="calcTMB()">
+              <option value="male">Masculino</option>
+              <option value="female">Feminino</option>
+            </select>
+          </div>
+        </div>
+        <div class="mt12">
+          <label class="lbl">Fator de Atividade Física</label>
+          <select id="sActivity" onchange="calcTMB()">
+            <option value="1.2">Sedentário — sem exercício</option>
+            <option value="1.375">Levemente ativo — 1-3x por semana</option>
+            <option value="1.55">Moderadamente ativo — 3-5x por semana</option>
+            <option value="1.725">Muito ativo — 6-7x por semana</option>
+            <option value="1.9">Extremamente ativo — 2x ao dia</option>
+          </select>
+        </div>
+        <div class="tmb-panel mt16">
+          <div class="g2">
+            <div class="ta-c">
+              <div style="color:rgba(255,255,255,.45);font-size:10px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">TMB</div>
+              <div class="tmb-val" id="tmbResult">—</div>
+              <div style="color:rgba(255,255,255,.35);font-size:11px;margin-top:4px;">kcal/dia repouso</div>
+            </div>
+            <div class="ta-c">
+              <div style="color:rgba(255,255,255,.45);font-size:10px;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:6px;">GET</div>
+              <div class="tmb-val" id="getResult">—</div>
+              <div style="color:rgba(255,255,255,.35);font-size:11px;margin-top:4px;">kcal/dia c/ atividade</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- CONTATO & PAGAMENTO -->
+      <div class="sec">
+        <div class="sec-title mb16">💳 Contato & Pagamento</div>
+        <div class="mb12">
+          <label class="lbl">Telefone / WhatsApp</label>
+          <input type="tel" inputmode="tel" id="sPhone" placeholder="+55 41 99999-9999">
+        </div>
+        <div class="g2">
+          <div>
+            <label class="lbl">Status de Pagamento</label>
+            <select id="sPayStatus">
+              <option value="em_dia">Em dia</option>
+              <option value="a_vencer">A vencer</option>
+              <option value="inadimplente">Inadimplente</option>
+            </select>
+          </div>
+          <div>
+            <label class="lbl">Vencimento</label>
+            <input type="date" id="sDueDate">
+          </div>
+        </div>
+        <button onclick="saveStudent()" class="btn btn-green btn-block mt16">💾 Salvar Aluno</button>
+      </div>
+    </section>
+
+    <!-- DIETA -->
+    <section id="tab-dieta" class="tab-pane">
+      <div class="sec">
+        <div class="sec-head">
+          <div class="sec-title">🥗 Planejamento Alimentar</div>
+        </div>
+        <div class="flex gap8 mb16">
+          <button onclick="openModal()" class="btn btn-outline" style="flex:1;">+ Alimentos</button>
+          <button onclick="addMeal()" class="btn btn-blue" style="flex:1;">+ Refeição</button>
+        </div>
+
+        <!-- ÁGUA & REFEIÇÕES LIVRES -->
+        <div class="diet-extra mb16">
+          <div class="mb12">
+            <label class="lbl">💧 Meta de Água Diária</label>
+            <div class="water-row">
+              <input type="number" inputmode="decimal" id="sWater" placeholder="Ex: 3000" min="0" step="50" oninput="updateWater()">
+              <span class="water-unit">ml</span>
+              <span class="water-liters" id="waterLiters"></span>
+            </div>
+          </div>
+          <div>
+            <label class="lbl">🍔 Refeições Livres na Semana <span id="freeDaysCount"></span></label>
+            <div class="day-picker">
+              <button type="button" class="day-chip" data-day="1" onclick="toggleFreeDay(1)">Seg</button>
+              <button type="button" class="day-chip" data-day="2" onclick="toggleFreeDay(2)">Ter</button>
+              <button type="button" class="day-chip" data-day="3" onclick="toggleFreeDay(3)">Qua</button>
+              <button type="button" class="day-chip" data-day="4" onclick="toggleFreeDay(4)">Qui</button>
+              <button type="button" class="day-chip" data-day="5" onclick="toggleFreeDay(5)">Sex</button>
+              <button type="button" class="day-chip" data-day="6" onclick="toggleFreeDay(6)">Sáb</button>
+              <button type="button" class="day-chip" data-day="0" onclick="toggleFreeDay(0)">Dom</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="mealsContainer">
+          <div class="empty-hint">Toque em "+ Refeição" para iniciar o planejamento alimentar...</div>
+        </div>
+        <div id="macroSummary" class="hidden">
+          <hr style="border:none;border-top:1px solid var(--border);margin:18px 0 14px;">
+          <div class="sec-title mb12">📊 Resumo de Macronutrientes</div>
+          <div class="macro-grid">
+            <div class="macro-card">
+              <div style="color:rgba(255,255,255,.4);font-size:9px;text-transform:uppercase;letter-spacing:1px;">Total Calorias</div>
+              <div class="macro-num neon" id="totalCal">0</div>
+              <div style="color:rgba(255,255,255,.35);font-size:10px;">kcal</div>
+            </div>
+            <div class="macro-card">
+              <div style="color:rgba(255,255,255,.4);font-size:9px;text-transform:uppercase;letter-spacing:1px;">Carboidratos</div>
+              <div class="macro-num" style="color:#4db8ff;" id="totalCarb">0g</div>
+            </div>
+            <div class="macro-card">
+              <div style="color:rgba(255,255,255,.4);font-size:9px;text-transform:uppercase;letter-spacing:1px;">Proteínas</div>
+              <div class="macro-num" style="color:#ff7070;" id="totalProt">0g</div>
+            </div>
+            <div class="macro-card">
+              <div style="color:rgba(255,255,255,.4);font-size:9px;text-transform:uppercase;letter-spacing:1px;">Gorduras</div>
+              <div class="macro-num" style="color:#ffd166;" id="totalFat">0g</div>
+            </div>
+          </div>
+          <div id="chartWrap"><canvas id="macroChart"></canvas></div>
+        </div>
+
+        <!-- SUBSTITUIÇÕES -->
+        <div id="substSection" class="hidden">
+          <hr style="border:none;border-top:1px solid var(--border);margin:18px 0 14px;">
+          <div class="sec-title mb8">🔄 Alimentos de Substituição</div>
+          <div class="sec-sub">Equivalência calórica calculada com base na tabela TACO. O aluno pode trocar pelo substituto na mesma quantidade indicada.</div>
+          <div id="substList"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MANIPULADOS -->
+    <section id="tab-manip" class="tab-pane">
+      <div class="sec">
+        <div class="sec-head">
+          <div class="sec-title">💊 Manipulados</div>
+        </div>
+        <button onclick="addCompound()" class="btn btn-blue btn-block mb12">+ Adicionar Manipulado</button>
+        <div id="compBody">
+          <div id="compEmpty" class="empty-hint">Nenhum manipulado adicionado</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ERGOGÊNICOS -->
+    <section id="tab-ergo" class="tab-pane">
+      <div class="sec">
+        <div class="sec-head">
+          <div class="sec-title">⚡ Ergogênicos</div>
+        </div>
+        <button onclick="addErgogenic()" class="btn btn-blue btn-block mb12">+ Adicionar Ergogênico</button>
+        <div id="ergoBody">
+          <div id="ergoEmpty" class="empty-hint">Nenhum ergogênico adicionado</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- OBSERVAÇÕES -->
+    <section id="tab-obs" class="tab-pane">
+      <div class="sec">
+        <div class="sec-title mb8">📋 Observações & Orientações</div>
+        <div class="sec-sub">Cada linha se torna um tópico no PDF exportado.</div>
+        <textarea id="observations" placeholder="• Beber no mínimo 3L de água por dia&#10;• Priorizar sono de 7 a 8 horas&#10;• Evitar alimentos ultraprocessados&#10;• Realizar cardio em jejum 3x por semana"></textarea>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- STICKY ACTION BAR -->
+  <div class="action-bar">
+    <button onclick="openImportModal()" class="btn btn-outline">📥 Importar</button>
+    <button onclick="confirmClear()" class="btn btn-clear">🗑 Limpar</button>
+    <button id="pdfBtn" onclick="exportPDF()" class="btn btn-green">⬇ PDF</button>
+  </div>
+
+</div><!-- /app-shell -->
+
+<script src="app.js"></script>
+</body>
+</html>
