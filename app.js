@@ -687,7 +687,7 @@ let studentFilter = '';
 const PAY_LABEL = {em_dia:'Em dia', a_vencer:'A vencer', inadimplente:'Inadimplente'};
 const PAY_ORDER = {inadimplente:0, a_vencer:1, em_dia:2};
 
-function saveStudentsToStorage(){ lsSet('td_mobile_students', JSON.stringify(students)); }
+function saveStudentsToStorage(skipPush){ lsSet('td_mobile_students', JSON.stringify(students)); if(!skipPush) fbPush('data/students', {list:students}); }
 function genId(){ return 'std_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
 function updateStudentStatusLine(){
@@ -931,6 +931,7 @@ function saveCoachContact(){
   coachContact = v;
   lsSet('td_mobile_coach_contact', v);
   document.getElementById('coachContactStatus').textContent = v ? 'salvo ✓' : 'não configurado';
+  fbPush('data/settings', {coachContact, gcalClientId, logo: _logoMemory || lsGet('td_mobile_logo') || ''});
   alert('Contato salvo!');
 }
 
@@ -965,6 +966,7 @@ function saveGcalClientId(){
   gcalTokenClient = null; gcalAccessToken = null; gcalTokenExpiry = 0;
   const ok = initGcalTokenClient();
   updateGcalStatus(ok ? 'desconectado (toque em Conectar)' : 'Client ID salvo — aguardando biblioteca do Google carregar');
+  fbPush('data/settings', {coachContact, gcalClientId, logo: _logoMemory || lsGet('td_mobile_logo') || ''});
   alert('Client ID salvo! Agora toque em "Conectar Google Agenda".');
 }
 
@@ -1081,7 +1083,81 @@ function cancelFeedbackEvent(id){
   });
 }
 
-function saveFoods(){ lsSet('td_mobile_foods', JSON.stringify(foods)); }
+function saveFoods(){ lsSet('td_mobile_foods', JSON.stringify(foods)); fbPush('data/foods', {list:foods}); }
+
+// ===================== SINCRONIZAÇÃO (Firebase — celular + computador) =====================
+let fbUser = null;
+
+function fbPush(path, data){
+  if(!fbUser || typeof window.fbSaveDoc !== 'function') return;
+  window.fbSaveDoc(path, data);
+}
+
+function fbUpdateSyncUI(){
+  const statusEl = document.getElementById('syncStatusText');
+  const outBox   = document.getElementById('syncSignedOut');
+  const inBox    = document.getElementById('syncSignedIn');
+  const emailEl  = document.getElementById('syncUserEmail');
+  if(!statusEl) return;
+  if(fbUser){
+    statusEl.textContent = 'conectado ✓';
+    if(outBox) outBox.classList.add('hidden');
+    if(inBox)  inBox.classList.remove('hidden');
+    if(emailEl) emailEl.textContent = fbUser.email || fbUser.name || '';
+  } else {
+    statusEl.textContent = 'desconectado';
+    if(outBox) outBox.classList.remove('hidden');
+    if(inBox)  inBox.classList.add('hidden');
+  }
+}
+
+window.addEventListener('fbAuthChanged', e=>{
+  fbUser = e.detail.user;
+  fbUpdateSyncUI();
+  if(!fbUser) return;
+
+  window.fbWatchDoc('data/students', (data, pending)=>{
+    if(pending) return;
+    if(data && Array.isArray(data.list)){
+      students = data.list;
+      saveStudentsToStorage(true);
+      renderStudentsList();
+      updateStudentStatusLine();
+    } else {
+      fbPush('data/students', {list:students});
+    }
+  });
+
+  window.fbWatchDoc('data/foods', (data, pending)=>{
+    if(pending) return;
+    if(data && Array.isArray(data.list) && data.list.length){
+      foods = data.list;
+      lsSet('td_mobile_foods', JSON.stringify(foods));
+    } else {
+      fbPush('data/foods', {list:foods});
+    }
+  });
+
+  window.fbWatchDoc('data/settings', (data, pending)=>{
+    if(pending) return;
+    if(data){
+      coachContact = data.coachContact || '';
+      gcalClientId = data.gcalClientId || '';
+      lsSet('td_mobile_coach_contact', coachContact);
+      lsSet('td_mobile_gcal_client_id', gcalClientId);
+      const ccInput = document.getElementById('coachContact');
+      const ccStatus = document.getElementById('coachContactStatus');
+      if(ccInput) ccInput.value = coachContact;
+      if(ccStatus) ccStatus.textContent = coachContact ? 'salvo ✓' : 'não configurado';
+      const gcInput = document.getElementById('gcalClientId');
+      if(gcInput) gcInput.value = gcalClientId;
+      if(gcalClientId){ gcalTokenClient = null; gcalAccessToken = null; gcalTokenExpiry = 0; initGcalTokenClient(); updateGcalStatus('desconectado (toque em Conectar)'); }
+      if(data.logo){ _logoMemory = data.logo; lsSet('td_mobile_logo', data.logo); applyLogo(data.logo); }
+    } else {
+      fbPush('data/settings', {coachContact, gcalClientId, logo: _logoMemory || lsGet('td_mobile_logo') || ''});
+    }
+  });
+});
 
 // ===================== TABS =====================
 function switchTab(tab){
@@ -1095,7 +1171,7 @@ function uploadLogo(input){
   const f = input.files[0];
   if(!f) return;
   const r = new FileReader();
-  r.onload = e => { _logoMemory = e.target.result; lsSet('td_mobile_logo', e.target.result); applyLogo(e.target.result); };
+  r.onload = e => { _logoMemory = e.target.result; lsSet('td_mobile_logo', e.target.result); applyLogo(e.target.result); fbPush('data/settings', {coachContact, gcalClientId, logo: e.target.result}); };
   r.readAsDataURL(f);
 }
 function applyLogo(src){

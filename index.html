@@ -199,6 +199,21 @@
           <div class="sec-title">👥 Meus Alunos</div>
         </div>
 
+        <!-- SINCRONIZAÇÃO (Firebase — celular + computador) -->
+        <details class="gcal-config mb12" id="syncDetails" open>
+          <summary>☁️ Sincronização: <span id="syncStatusText">desconectado</span></summary>
+          <div class="mt12">
+            <div style="color:rgba(255,255,255,.4);font-size:11px;margin-bottom:8px;">Entre com sua conta Google para sincronizar alunos e alimentos automaticamente entre o celular e o computador. Ao entrar pela primeira vez em um segundo aparelho, os dados da nuvem substituem os locais desse aparelho — entre primeiro no aparelho que já tem seus dados.</div>
+            <div id="syncSignedOut">
+              <button onclick="fbSignIn()" class="btn btn-blue btn-block mt8">🔐 Entrar com Google</button>
+            </div>
+            <div id="syncSignedIn" class="hidden">
+              <div id="syncUserEmail" style="color:var(--neon);font-size:13px;margin-bottom:8px;"></div>
+              <button onclick="fbSignOut()" class="btn btn-outline btn-block">Sair</button>
+            </div>
+          </div>
+        </details>
+
         <!-- CONTATO DO TREINADOR (rodapé do PDF) -->
         <details class="gcal-config mb12">
           <summary>📞 Meu Contato: <span id="coachContactStatus">não configurado</span></summary>
@@ -429,5 +444,6 @@
 </div><!-- /app-shell -->
 
 <script src="app.js"></script>
+<script type="module" src="firebase-init.js"></script>
 </body>
 </html>
