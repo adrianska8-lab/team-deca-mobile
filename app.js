@@ -2003,9 +2003,13 @@ async function processImportFile(input){
       pageTexts.push(items.map(i => i.str).join(' '));
     }
 
-    importData = parsePDFPages(pageTexts);
+    const allText = pageTexts.join(' ');
+    const isExternalFormat = /Resumo Nutricional/i.test(allText);
+    importData = isExternalFormat ? parseExternalPlanPDF(pageTexts, file.name) : parsePDFPages(pageTexts);
     renderImportPreview(importData, pageTexts);
-    statusEl.innerHTML = `<span style="color:#00cc66;">✅ PDF processado! Confira os dados abaixo e toque em Importar.</span>`;
+    statusEl.innerHTML = isExternalFormat
+      ? `<span style="color:#00cc66;">✅ PDF de outro app reconhecido! Confira os dados abaixo — alguns campos (idade/peso/altura) não vêm nesse formato e precisam ser preenchidos.</span>`
+      : `<span style="color:#00cc66;">✅ PDF processado! Confira os dados abaixo e toque em Importar.</span>`;
     actionsEl.classList.remove('hidden');
   } catch(e){
     console.error(e);
@@ -2108,8 +2112,109 @@ function parsePDFPages(pages){
   return res;
 }
 
+// ===================== IMPORTAÇÃO DE OUTRO APP (formato "Resumo Nutricional") =====================
+// Migração de alunos vindos de outro app de planos alimentares. Formato bem diferente do nosso:
+// sem idade/peso/altura, macros já calculados por item (não usamos a base TACO — recriamos o alimento
+// fielmente a partir dos macros informados, pra não arriscar puxar um valor diferente do que já foi
+// prescrito ao aluno).
+function parseExternalPlanPDF(pages, fileName){
+  const all = pages.join(' ').replace(/\s+/g,' ');
+  const res = { name:'', age:'', weight:'', height:'', water:'', freeDays:[],
+                meals:[], compounds:[], ergogenics:[], observations:'',
+                rawComp:'', rawErgo:'', newFoods:[] };
+
+  // Nome a partir do nome do arquivo (ex: PA20260830135654PedroPickler.pdf -> Pedro Pickler)
+  const baseName = (fileName||'').replace(/\.pdf$/i,'').replace(/^PA\d+/i,'');
+  res.name = baseName.replace(/([a-zà-ÿ0-9])([A-ZÀ-Ü])/g,'$1 $2').trim();
+
+  // Ingestão hídrica — informada em litros nesse app; convertemos para ml (padrão do nosso campo)
+  const waterM = all.match(/Ingestão hídrica:?\s*(\d+(?:[.,]\d+)?)/i);
+  if(waterM) res.water = String(Math.round(parseFloat(waterM[1].replace(',','.'))*1000));
+
+  // Refeição livre — tenta reconhecer dias da semana citados no texto livre
+  const freeM = all.match(/Refeição livre:?\s*(.+?)(?=Resumo Nutricional|Instruções Gerais|Prescrição|Refeições|$)/i);
+  let freeText = '';
+  if(freeM){
+    freeText = freeM[1].trim();
+    const dayMap = {'domingo':0,'segunda':1,'terça':2,'terca':2,'quarta':3,'quinta':4,'sexta':5,'sábado':6,'sabado':6};
+    Object.keys(dayMap).forEach(k=>{
+      if(new RegExp(k,'i').test(freeText) && !res.freeDays.includes(dayMap[k])) res.freeDays.push(dayMap[k]);
+    });
+  }
+
+  // Instruções Gerais e Prescrição — texto muito variável entre planos; trazemos como bloco pra
+  // revisão manual em vez de tentar separar automaticamente em Manipulados/Ergogênicos e arriscar
+  // misturar dosagem com substância errada.
+  const generalM = all.match(/Instruções Gerais\s*(.+?)(?=Prescrição|Refeições|$)/i);
+  const prescM   = all.match(/Prescrição\s*(.+?)(?=Refeições|$)/i);
+  const obsParts = [];
+  if(freeText) obsParts.push('Refeição livre (original do outro app): ' + freeText);
+  if(generalM && generalM[1].trim()) obsParts.push('\nInstruções Gerais (importado — revisar):\n' + generalM[1].trim());
+  if(prescM && prescM[1].trim()) obsParts.push('\nPrescrição (importado — mover para Manipulados/Ergogênicos manualmente):\n' + prescM[1].trim());
+  res.observations = obsParts.join('\n');
+
+  // Refeições — cada bloco começa com "HH:MM Nome" seguido do total C/P/G/Kcal da refeição
+  const mealsStartIdx = all.search(/\bRefeições\b/i);
+  const mealsText = mealsStartIdx>=0 ? all.substring(mealsStartIdx) : all;
+  const mealBlocks = mealsText.split(/(?<!\d)(?=\d{1,2}:\d{2}\s+[A-Za-zÀ-ÿ])/).filter(b=>/^\d{1,2}:\d{2}/.test(b.trim()));
+
+  // Nesse app, os macros do item vêm ANTES da quantidade/nome, e o Kcal vem DEPOIS do nome:
+  // "C: 2.0g P: 32.0g G: 2.0g  40 colher (servir)  Whey protein concentrado 80% Kcal: 160"
+  const unitRe = 'gramas?|ml|un|fatia|colher\\s*\\(servir\\)|col\\.\\s?sopa|col\\.\\s?chá|xícara|porção|scoop|cápsulas?';
+  const itemRe = new RegExp(`C:\\s*([\\d.]+)g\\s*P:\\s*([\\d.]+)g\\s*G:\\s*([\\d.]+)g\\s*(\\d+(?:\\.\\d+)?)\\s+(${unitRe})\\s+([A-Za-zÀ-ÿ0-9,%\\-\\.\\/\\s]+?)\\s*Kcal:\\s*([\\d.]+)`, 'gi');
+
+  const nameToTempKey = new Map();
+
+  for(const block of mealBlocks){
+    const hdrM = block.match(/^(\d{1,2}:\d{2})\s+(.+?)\s+C:\s*[\d.]+g\s*P:/i);
+    if(!hdrM) continue;
+    const time = hdrM[1];
+    const mealName = hdrM[2].trim();
+
+    const obsM = block.match(/Observações:\s*(.+?)\s+(?=C:\s*[\d.]+g\s*P:)/i);
+    const notes = obsM ? obsM[1].trim() : '';
+
+    const meal = { name: mealName, time, notes, items: [] };
+    itemRe.lastIndex = 0;
+    let m;
+    while((m = itemRe.exec(block)) !== null){
+      const [, cStr, pStr, gStr, qtyStr, unitRaw, nameRaw, kcalStr] = m;
+      const qty  = parseFloat(qtyStr);
+      const name = nameRaw.trim().replace(/\s+/g,' ');
+      const carb = parseFloat(cStr), prot = parseFloat(pStr), fat = parseFloat(gStr), cal = parseFloat(kcalStr);
+      const unit = unitRaw.trim().toLowerCase();
+      if(!qty || !name) continue;
+
+      const key = name.toLowerCase();
+      let tempKey = nameToTempKey.get(key);
+      if(tempKey === undefined){
+        let entry;
+        if(/^gramas?$/.test(unit) || unit==='ml'){
+          const rate = 100/qty;
+          entry = {name, cal:Math.round(cal*rate*100)/100, carb:Math.round(carb*rate*100)/100, prot:Math.round(prot*rate*100)/100, fat:Math.round(fat*rate*100)/100, unit: unit==='ml'?'ml':'g', calcMode:'per100'};
+        } else {
+          entry = {name, cal:Math.round(cal/qty*100)/100, carb:Math.round(carb/qty*100)/100, prot:Math.round(prot/qty*100)/100, fat:Math.round(fat/qty*100)/100, unit: unitRaw.trim(), calcMode:'perUnit'};
+        }
+        tempKey = 'newfood_'+res.newFoods.length;
+        res.newFoods.push({tempKey, entry});
+        nameToTempKey.set(key, tempKey);
+      }
+      meal.items.push({fiTemp: tempKey, qty});
+    }
+
+    if(meal.items.length) res.meals.push(meal);
+  }
+
+  return res;
+}
+
 function renderImportPreview(d, rawPages){
   const mealsFound = d.meals.filter(m=>m.items.length>0).length;
+  const newFoodsMap = new Map((d.newFoods||[]).map(nf=>[nf.tempKey, nf.entry]));
+  const itemLabel = it => {
+    const f = it.fiTemp!==undefined ? newFoodsMap.get(it.fiTemp) : foods[it.fi];
+    return f ? `${f.name} (${it.qty}${f.unit||'g'})` : '?';
+  };
 
   document.getElementById('importPreview').innerHTML = `
     <div style="margin-top:14px;display:grid;gap:12px;">
@@ -2133,7 +2238,7 @@ function renderImportPreview(d, rawPages){
               <div style="margin-bottom:6px;padding:6px 8px;background:rgba(0,170,255,.07);border-left:2px solid #00aaff;border-radius:2px;">
                 <div style="color:#fff;font-size:13px;font-weight:600;">${m.name}</div>
                 <div style="color:rgba(255,255,255,.45);font-size:11px;">
-                  ${m.items.map(it=>foods[it.fi]?.name+' ('+it.qty+(foods[it.fi]?.unit||'g')+')').join(' · ')}
+                  ${m.items.map(itemLabel).join(' · ')}
                 </div>
               </div>`).join('')
           : `<div style="color:rgba(255,255,255,.3);font-size:12px;font-style:italic;">
@@ -2142,6 +2247,14 @@ function renderImportPreview(d, rawPages){
              ${d.meals.map(m=>`<div style="color:rgba(255,255,255,.4);font-size:12px;padding:3px 0;">• ${m.name}</div>`).join('')}`
         }
       </div>
+
+      ${d.newFoods && d.newFoods.length ? `
+      <div style="background:#071629;border:1px solid #1a3d6e;border-radius:4px;padding:14px;">
+        <div style="color:#00aaff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
+          ${d.newFoods.length} alimentos novos serão criados
+        </div>
+        <div style="color:rgba(255,255,255,.4);font-size:11px;">Macros extraídos direto do PDF de origem (não da base TACO), pra manter fiel ao que já foi prescrito. Ficam disponíveis no banco de alimentos depois.</div>
+      </div>` : ''}
 
       ${d.rawComp ? `
       <div style="background:#071629;border:1px solid #1a3d6e;border-radius:4px;padding:14px;">
@@ -2182,10 +2295,21 @@ function applyImport(){
   freeDays = [...(importData.freeDays || [])];
   renderFreeDaysUI();
 
+  // Se vier de outro app, os alimentos ainda não existem no banco — cria agora, só na confirmação
+  const tempKeyToFi = {};
+  if(importData.newFoods && importData.newFoods.length){
+    importData.newFoods.forEach(nf=>{
+      tempKeyToFi[nf.tempKey] = foods.length;
+      foods.push(nf.entry);
+    });
+    saveFoods();
+  }
+
   meals = []; mealIdCtr = 0;
   importData.meals.forEach(m => {
     mealIdCtr++;
-    meals.push({ id: mealIdCtr, name: m.name, items: [...m.items] });
+    const items = m.items.map(it => it.fiTemp!==undefined ? {fi: tempKeyToFi[it.fiTemp], qty: it.qty} : {...it});
+    meals.push({ id: mealIdCtr, name: m.name, time: m.time||'', notes: m.notes||'', items });
   });
   renderMeals();
 
