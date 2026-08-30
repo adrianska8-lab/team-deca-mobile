@@ -731,29 +731,28 @@ function saveStudent(){
   alert('Aluno salvo com sucesso!');
 }
 
-function openStudent(id){
-  const st = students.find(s=>s.id===id);
-  if(!st) return;
-
+// Preenche o formulário (Aluno/Dieta/Manip/Ergo/Obs) a partir de um "plano" —
+// tanto o registro atual de um aluno quanto um snapshot antigo do histórico têm essa mesma forma.
+function applyPlanToForm(st, plan){
   document.getElementById('sName').value     = st.name || '';
-  document.getElementById('sAge').value      = st.age || '';
-  document.getElementById('sWeight').value   = st.weight || '';
-  document.getElementById('sHeight').value   = st.height || '';
-  document.getElementById('sGender').value   = st.gender || 'male';
-  document.getElementById('sActivity').value = st.activity || '1.2';
+  document.getElementById('sAge').value      = plan.age || '';
+  document.getElementById('sWeight').value   = plan.weight || '';
+  document.getElementById('sHeight').value   = plan.height || '';
+  document.getElementById('sGender').value   = plan.gender || 'male';
+  document.getElementById('sActivity').value = plan.activity || '1.2';
   document.getElementById('sPhone').value    = st.phone || '';
   document.getElementById('sPayStatus').value= st.payStatus || 'em_dia';
   document.getElementById('sDueDate').value  = st.dueDate || '';
   calcTMB();
 
-  meals = JSON.parse(JSON.stringify(st.meals || []));
+  meals = JSON.parse(JSON.stringify(plan.meals || []));
   mealIdCtr = meals.reduce((max,m)=>Math.max(max,m.id||0),0);
   renderMeals();
 
   const compBody = document.getElementById('compBody');
   compBody.innerHTML = '<div id="compEmpty" class="empty-hint">Nenhum manipulado adicionado</div>';
   compCtr = 0;
-  (st.compounds||[]).forEach(r=>{
+  (plan.compounds||[]).forEach(r=>{
     addCompound();
     const rows = compBody.querySelectorAll('.entry-row');
     const ins  = rows[rows.length-1].querySelectorAll('input');
@@ -763,19 +762,36 @@ function openStudent(id){
   const ergoBody = document.getElementById('ergoBody');
   ergoBody.innerHTML = '<div id="ergoEmpty" class="empty-hint">Nenhum ergogênico adicionado</div>';
   ergoCtr = 0;
-  (st.ergogenics||[]).forEach(r=>{
+  (plan.ergogenics||[]).forEach(r=>{
     addErgogenic();
     const rows = ergoBody.querySelectorAll('.entry-row');
     const ins  = rows[rows.length-1].querySelectorAll('input');
     ins[0].value=r[0]||''; ins[1].value=r[1]||''; ins[2].value=r[2]||'';
   });
 
-  document.getElementById('observations').value = st.observations || '';
-  document.getElementById('sWater').value = st.water || '';
+  document.getElementById('observations').value = plan.observations || '';
+  document.getElementById('sWater').value = plan.water || '';
   updateWater();
-  freeDays = [...(st.freeDays || [])];
+  freeDays = [...(plan.freeDays || [])];
   renderFreeDaysUI();
+}
 
+function openStudent(id){
+  const st = students.find(s=>s.id===id);
+  if(!st) return;
+  applyPlanToForm(st, st);
+  currentStudentId = st.id;
+  updateStudentStatusLine();
+  switchTab('aluno');
+}
+
+function reopenHistoryVersion(studentId, idx){
+  const st = students.find(s=>s.id===studentId);
+  if(!st) return;
+  const h = st.pdfHistory && st.pdfHistory[idx];
+  if(!h || !h.snapshot){ alert('Esta versão foi exportada antes desta função existir e não tem dados salvos para reabrir.'); return; }
+  if(!confirm(`Reabrir a versão de ${h.date}?\n\nOs dados atuais do formulário serão substituídos pelos desta versão. Você pode editar e depois salvar/exportar como uma nova versão — a versão antiga continua no histórico.`)) return;
+  applyPlanToForm(st, h.snapshot);
   currentStudentId = st.id;
   updateStudentStatusLine();
   switchTab('aluno');
@@ -821,7 +837,13 @@ function renderStudentsList(){
     const histHTML  = histCount ? `
       <details class="pdf-history">
         <summary>📄 Histórico (${histCount})</summary>
-        <ul>${s.pdfHistory.slice().reverse().map(h=>`<li>${h.date}</li>`).join('')}</ul>
+        <ul>${s.pdfHistory.map((h,idx)=>({h,idx})).reverse().map(({h,idx})=>`
+          <li>
+            <span>${h.date}</span>
+            ${h.snapshot
+              ? `<button onclick="reopenHistoryVersion('${s.id}',${idx})" class="link-btn link-btn-blue">↺ reabrir</button>`
+              : `<span class="hist-nodata">sem dados salvos</span>`}
+          </li>`).join('')}</ul>
       </details>` : '';
     const fbHTML = s.nextFeedback ? `
       <div class="feedback-chip">
@@ -1461,6 +1483,8 @@ function exportPDF(){
     const age      = document.getElementById('sAge').value;
     const weight   = document.getElementById('sWeight').value;
     const height   = document.getElementById('sHeight').value;
+    const gender   = document.getElementById('sGender').value;
+    const activity = document.getElementById('sActivity').value;
     const tmb      = document.getElementById('tmbResult').textContent;
     const get      = document.getElementById('getResult').textContent;
     const logo     = _logoMemory || lsGet('td_mobile_logo') || '';
@@ -1486,7 +1510,18 @@ function exportPDF(){
       const st = students.find(s=>s.id===currentStudentId);
       if(st){
         st.pdfHistory = st.pdfHistory || [];
-        st.pdfHistory.push({date: new Date().toLocaleString('pt-BR')});
+        st.pdfHistory.push({
+          date: new Date().toLocaleString('pt-BR'),
+          snapshot: {
+            age, weight, height, gender, activity,
+            meals: JSON.parse(JSON.stringify(meals)),
+            compounds: compRows,
+            ergogenics: ergoRows,
+            observations: obs,
+            water,
+            freeDays: [...freeDays]
+          }
+        });
         st.updatedAt = Date.now();
         saveStudentsToStorage();
         renderStudentsList();
