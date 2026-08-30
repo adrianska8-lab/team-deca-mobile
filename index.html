@@ -121,6 +121,20 @@
         <div><label class="lbl">Gorduras (g)</label><input id="fFat" type="number" inputmode="decimal" placeholder="0.1" min="0" step="0.1"></div>
       </div>
     </div>
+    <details class="gcal-config mt12">
+      <summary>🧪 Micronutrientes (opcional, mesma base do campo Calorias)</summary>
+      <div class="mt12" style="display:grid;gap:12px;">
+        <div class="g2">
+          <div><label class="lbl">Fibra (g)</label><input id="fFiber" type="number" inputmode="decimal" placeholder="2.5" min="0" step="0.1"></div>
+          <div><label class="lbl">Sódio (mg)</label><input id="fSodium" type="number" inputmode="decimal" placeholder="1.5" min="0" step="0.1"></div>
+        </div>
+        <div class="g2">
+          <div><label class="lbl">Cálcio (mg)</label><input id="fCalcium" type="number" inputmode="decimal" placeholder="5" min="0" step="0.1"></div>
+          <div><label class="lbl">Ferro (mg)</label><input id="fIron" type="number" inputmode="decimal" placeholder="0.3" min="0" step="0.01"></div>
+        </div>
+        <div><label class="lbl">Potássio (mg)</label><input id="fPotassium" type="number" inputmode="decimal" placeholder="75" min="0" step="0.1"></div>
+      </div>
+    </details>
     <button onclick="saveFood()" class="btn btn-blue btn-block mt16">+ Salvar Alimento</button>
     <hr style="border:none;border-top:1px solid var(--border);margin:20px 0;">
     <div class="flex" style="justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
@@ -336,6 +350,20 @@
             </div>
           </div>
           <div id="chartWrap"><canvas id="macroChart"></canvas></div>
+        </div>
+
+        <!-- MICRONUTRIENTES -->
+        <div id="microSummary" class="hidden">
+          <hr style="border:none;border-top:1px solid var(--border);margin:18px 0 14px;">
+          <div class="sec-title mb12">🧪 Micronutrientes Totais</div>
+          <div class="micro-grid">
+            <div class="macro-card"><div class="mc-lbl">Fibra</div><div class="macro-num" style="color:#7ed957;font-size:1.2rem;" id="totalFiber">0g</div></div>
+            <div class="macro-card"><div class="mc-lbl">Sódio</div><div class="macro-num" style="color:#ff9d6c;font-size:1.2rem;" id="totalSodium">0mg</div></div>
+            <div class="macro-card"><div class="mc-lbl">Cálcio</div><div class="macro-num" style="color:#9fd8ff;font-size:1.2rem;" id="totalCalcium">0mg</div></div>
+            <div class="macro-card"><div class="mc-lbl">Ferro</div><div class="macro-num" style="color:#e0a1ff;font-size:1.2rem;" id="totalIron">0mg</div></div>
+            <div class="macro-card"><div class="mc-lbl">Potássio</div><div class="macro-num" style="color:#ffe08a;font-size:1.2rem;" id="totalPotassium">0mg</div></div>
+          </div>
+          <div class="sec-sub mt8">Estimado com base na tabela TACO. Alimentos sem esse dado contam como 0.</div>
         </div>
 
         <!-- SUBSTITUIÇÕES -->

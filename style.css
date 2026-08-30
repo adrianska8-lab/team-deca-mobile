@@ -75,7 +75,15 @@ textarea{resize:vertical;min-height:130px;line-height:1.6;}
 .macro-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
 .macro-card{background:var(--db);border:1px solid var(--border);border-top:3px solid var(--neon);border-radius:6px;padding:12px;text-align:center;}
 .macro-num{font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:900;font-size:1.6rem;}
+.mc-lbl{color:rgba(255,255,255,.4);font-size:9px;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;}
 #chartWrap{position:relative;width:180px;height:180px;margin:14px auto 0;}
+
+/* ===== Micronutrient cards ===== */
+.micro-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+@media(min-width:480px){.micro-grid{grid-template-columns:repeat(5,1fr);}}
+
+/* ===== Observação por refeição ===== */
+.meal-notes{margin-top:8px;min-height:56px;font-size:13px;padding:8px 10px;resize:vertical;line-height:1.4;}
 
 /* ===== Meal cards ===== */
 .meal-card{background:#040b17;border:1px solid var(--border);border-left:4px solid var(--neon);border-radius:8px;padding:14px;margin-bottom:12px;}
