@@ -378,14 +378,6 @@
           </div>
           <div class="sec-sub mt8">Estimado com base na tabela TACO. Alimentos sem esse dado contam como 0.</div>
         </div>
-
-        <!-- SUBSTITUIÇÕES -->
-        <div id="substSection" class="hidden">
-          <hr style="border:none;border-top:1px solid var(--border);margin:18px 0 14px;">
-          <div class="sec-title mb8">🔄 Alimentos de Substituição</div>
-          <div class="sec-sub">Equivalência calórica calculada com base na tabela TACO. O aluno pode trocar pelo substituto na mesma quantidade indicada.</div>
-          <div id="substList"></div>
-        </div>
       </div>
     </section>
 
@@ -420,6 +412,7 @@
       <div class="sec">
         <div class="sec-title mb8">📋 Observações & Orientações</div>
         <div class="sec-sub">Cada linha se torna um tópico no PDF exportado.</div>
+        <button type="button" onclick="insertDefaultInstructions()" class="btn btn-outline btn-block mb8">📋 Usar modelo padrão de instruções</button>
         <textarea id="observations" placeholder="• Beber no mínimo 3L de água por dia&#10;• Priorizar sono de 7 a 8 horas&#10;• Evitar alimentos ultraprocessados&#10;• Realizar cardio em jejum 3x por semana"></textarea>
       </div>
     </section>

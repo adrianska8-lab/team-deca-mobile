@@ -640,6 +640,27 @@ let chart = null;
 const DAY_ORDER = [1,2,3,4,5,6,0]; // Seg..Dom (ordem de exibição dos chips)
 const DAY_ABBR  = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const DAY_FULL  = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+
+// ===================== MODELO PADRÃO DE INSTRUÇÕES =====================
+const DEFAULT_INSTRUCTIONS = [
+  'Respeitar os horários sugeridos, com tolerância de até 30-60 minutos para mais ou para menos',
+  'Não pular refeições — se não for possível fazer uma refeição completa, substituir por uma opção equivalente em macros',
+  'Mastigar bem e evitar refeições muito rápidas ou distraídas (celular, TV)',
+  'Priorizar preparações grelhadas, assadas, cozidas ou no vapor',
+  'Evitar frituras e excesso de óleo/gordura no preparo',
+  'Temperos naturais são liberados; moderar sal e temperos industrializados',
+  'Seguir horários e dosagens exatamente como orientado',
+  'Não iniciar ou interromper suplementos por conta própria',
+  'Fotos de evolução e peso devem ser enviadas conforme combinado (semanal/quinzenal)',
+  'Qualquer sintoma incomum (mal-estar, alergias, desconforto digestivo) deve ser reportado imediatamente',
+  'Ajustes no plano só devem ser feitos após conversa com o consultor'
+].map(l=>'• '+l).join('\n');
+
+function insertDefaultInstructions(){
+  const ta = document.getElementById('observations');
+  if(ta.value.trim() && !confirm('Isso substitui o texto atual de Observações pelo modelo padrão. Continuar?')) return;
+  ta.value = DEFAULT_INSTRUCTIONS;
+}
 let freeDays = [];
 
 function updateWater(){
@@ -1380,30 +1401,13 @@ function equivQtyStr(origFood, origQty, sub, wpuOverride){
   }
   return qty+' '+unit;
 }
-function renderSubstitutions(){
-  const sec = document.getElementById('substSection');
-  if(!meals.length){ sec.classList.add('hidden'); return; }
-  const seen = new Map();
-  meals.forEach(m=>m.items.forEach(it=>{
-    if(!seen.has(it.fi)) seen.set(it.fi, {qty:it.qty, wpuOverride:it.wpuOverride, unitLabel:it.unitLabel});
-  }));
-  const rows = [];
-  seen.forEach((info,fi)=>{
-    const food=foods[fi]; if(!food) return;
-    const subs=findTacoSubs(food);
-    if(!subs.length) return;
-    rows.push({food,qty:info.qty,wpuOverride:info.wpuOverride,unitLabel:info.unitLabel,subs});
-  });
-  if(!rows.length){ sec.classList.add('hidden'); return; }
-  sec.classList.remove('hidden');
-  const isUnit = f=>(f.wpu||f.calcMode==='wpu'||f.calcMode==='perUnit');
-  const qtyStr = r=> r.wpuOverride ? r.qty+' '+(r.unitLabel||'un') : (isUnit(r.food) ? r.qty+' '+(r.food.unit||'un') : r.qty+'g');
-  document.getElementById('substList').innerHTML = rows.map(r=>`
-    <div class="subst-card">
-      <div class="subst-main">${r.food.name} — <span class="qty">${qtyStr(r)}</span></div>
-      ${r.subs[0] ? `<div class="subst-row"><span>${r.subs[0].name}</span><span class="eq">${equivQtyStr(r.food,r.qty,r.subs[0],r.wpuOverride)}</span></div>` : ''}
-      ${r.subs[1] ? `<div class="subst-row"><span>${r.subs[1].name}</span><span class="eq">${equivQtyStr(r.food,r.qty,r.subs[1],r.wpuOverride)}</span></div>` : ''}
-    </div>`).join('');
+// Substituições calculadas por item, exibidas direto na refeição (no app e no PDF) em vez de
+// numa lista separada — assim o aluno vê a troca junto do alimento, sem precisar ir a outro lugar.
+function substLineForItem(item){
+  const food = foods[item.fi]; if(!food) return '';
+  const subs = findTacoSubs(food);
+  if(!subs.length) return '';
+  return subs.map(s=>`${s.name} (${equivQtyStr(food,item.qty,s,item.wpuOverride)})`).join(' · ');
 }
 
 function renderMeals(){
@@ -1413,7 +1417,6 @@ function renderMeals(){
     document.getElementById('macroSummary').classList.add('hidden');
     document.getElementById('microSummary').classList.add('hidden');
     if(chart){ chart.destroy(); chart=null; }
-    renderSubstitutions();
     return;
   }
   c.innerHTML = meals.map(meal=>{
@@ -1426,6 +1429,7 @@ function renderMeals(){
           const hasOverride = !!item.wpuOverride;
           const funit = hasOverride ? (item.unitLabel||'un') : (fu ? (fu.unit||'g') : 'g');
           const canOfferUnit = fu && fu.calcMode==='per100' && !fu.wpu;
+          const subsLine = substLineForItem(item);
           return `<div class="food-item-card">
             <div class="food-item-top">
               <button type="button" class="food-pick-btn" onclick="openFoodPicker(${meal.id},${ii})">
@@ -1457,6 +1461,7 @@ function renderMeals(){
               <span>P: <b>${f1(cv.prot)}g</b></span>
               <span>G: <b>${f1(cv.fat)}g</b></span>
             </div>
+            ${subsLine ? `<div class="food-item-subs">🔄 ${subsLine}</div>` : ''}
           </div>`;
         }).join('');
     return `<div class="meal-card">
@@ -1468,6 +1473,7 @@ function renderMeals(){
           <button onclick="removeMeal(${meal.id})" class="btn btn-red btn-icon-only">✕</button>
         </div>
       </div>
+      ${meal.items.length ? `<div class="meal-totals-badge">C: ${f1(mt.carb)}g · P: ${f1(mt.prot)}g · G: ${f1(mt.fat)}g · ${f1(mt.cal)} kcal</div>` : ''}
       ${itemsHTML}
       <div class="meal-total-bar"><span>Total: ${f1(mt.cal)} kcal | C: ${f1(mt.carb)}g | P: ${f1(mt.prot)}g | G: ${f1(mt.fat)}g</span></div>
       <textarea class="meal-notes" placeholder="Observação / sugestão para esta refeição..." onchange="setMealNotes(${meal.id},this.value)">${meal.notes||''}</textarea>
@@ -1487,7 +1493,6 @@ function renderMeals(){
   document.getElementById('totalIron').textContent      = f1(tot.iron)+'mg';
   document.getElementById('totalPotassium').textContent = f1(tot.potassium)+'mg';
   updateChart(tot);
-  renderSubstitutions();
 }
 
 // ===================== CHART =====================
@@ -1732,7 +1737,7 @@ function buildPDF(d){
   const pageFooter = (n) => `
     <div style="position:absolute;bottom:28px;left:40px;right:40px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid rgba(0,170,255,.2);padding-top:14px;">
       <div style="font-size:11px;color:rgba(255,255,255,.25);font-style:italic;font-family:'Barlow Condensed',sans-serif;">TEAM DECA — Consultoria Fitness Profissional${coachContact ? ' · '+coachContact : ''}</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.25);font-family:'Rajdhani',sans-serif;">${new Date().toLocaleDateString('pt-BR')} · Página ${n}/4</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.25);font-family:'Rajdhani',sans-serif;">${new Date().toLocaleDateString('pt-BR')} · Página ${n}/3</div>
     </div>`;
   const waterFreeBarHTML = `
     <div style="display:flex;gap:14px;margin-bottom:18px;">
@@ -1766,13 +1771,18 @@ function buildPDF(d){
       const cv=calcItem(item);
       const isUnitFood = item.wpuOverride || f2.wpu || f2.calcMode==='wpu' || f2.calcMode==='perUnit';
       const qtyDisplay = isUnitFood ? item.qty+' '+(item.wpuOverride ? (item.unitLabel||'un') : (f2.unit||'un')) : item.qty+'g';
-      return `<tr>${pdfTD(f2.name)}${pdfTDC(qtyDisplay)}${pdfTDC(f1(cv.cal))}${pdfTDC(f1(cv.carb)+'g')}${pdfTDC(f1(cv.prot)+'g')}${pdfTDC(f1(cv.fat)+'g')}</tr>`;
+      const subsLine = substLineForItem(item);
+      const subsRow = subsLine ? `<tr><td colspan="6" style="padding:2px 12px 8px;color:rgba(255,255,255,.4);font-size:11px;font-style:italic;border-bottom:1px solid #1a3d6e;background:#071629;">🔄 ${subsLine}</td></tr>` : '';
+      return `<tr>${pdfTD(f2.name)}${pdfTDC(qtyDisplay)}${pdfTDC(f1(cv.cal))}${pdfTDC(f1(cv.carb)+'g')}${pdfTDC(f1(cv.prot)+'g')}${pdfTDC(f1(cv.fat)+'g')}</tr>` + subsRow;
     }).join('');
     return `
       <div style="margin-bottom:18px;">
-        <div style="background:#0b1e45;padding:9px 14px;border-left:4px solid #00aaff;display:flex;justify-content:space-between;align-items:center;">
+        <div style="background:#0b1e45;padding:9px 14px;border-left:4px solid #00aaff;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
           <span style="font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:700;font-size:15px;color:#00aaff;text-transform:uppercase;letter-spacing:1px;">${meal.name}</span>
-          ${meal.time ? `<span style="font-family:'Rajdhani',sans-serif;font-size:12px;color:rgba(255,255,255,.5);">🕐 ${meal.time}</span>` : ''}
+          <div style="display:flex;align-items:center;gap:12px;">
+            ${meal.items.length ? `<span style="font-family:'Rajdhani',sans-serif;font-size:11px;color:rgba(255,255,255,.55);">C:${f1(mt.carb)}g P:${f1(mt.prot)}g G:${f1(mt.fat)}g · ${f1(mt.cal)} kcal</span>` : ''}
+            ${meal.time ? `<span style="font-family:'Rajdhani',sans-serif;font-size:12px;color:rgba(255,255,255,.5);">🕐 ${meal.time}</span>` : ''}
+          </div>
         </div>
         <table style="width:100%;border-collapse:collapse;background:#071629;border:1px solid #1a3d6e;">
           <thead><tr>${pdfTH('Alimento')}${pdfTHC('Qtd')}${pdfTHC('Kcal')}${pdfTHC('Carb')}${pdfTHC('Prot')}${pdfTHC('Gord')}</tr></thead>
@@ -1788,32 +1798,6 @@ function buildPDF(d){
         ${meal.notes ? `<div style="background:rgba(0,170,255,.06);border-left:2px solid rgba(0,170,255,.3);border-radius:0 0 4px 4px;padding:8px 12px;font-size:12px;color:#c8d8ea;font-style:italic;">💬 ${meal.notes}</div>` : ''}
       </div>`;
   }).join('') || '<div style="color:rgba(255,255,255,.3);text-align:center;padding:30px;font-style:italic;">Nenhuma refeição cadastrada.</div>';
-
-  const seenSub = new Map();
-  meals.forEach(m=>m.items.forEach(it=>{ if(!seenSub.has(it.fi)) seenSub.set(it.fi,{qty:it.qty, wpuOverride:it.wpuOverride, unitLabel:it.unitLabel}); }));
-  const pdfSubRows = [];
-  seenSub.forEach((info,fi)=>{
-    const food=foods[fi]; if(!food) return;
-    const subs=findTacoSubs(food);
-    if(!subs.length) return;
-    pdfSubRows.push({food,qty:info.qty,wpuOverride:info.wpuOverride,unitLabel:info.unitLabel,subs});
-  });
-  const th  = tx=>`<th style="padding:8px 10px;text-align:left;color:#00aaff;font-size:10px;text-transform:uppercase;letter-spacing:1px;background:#0b1e45;border-bottom:2px solid #00aaff;font-family:'Barlow Condensed',sans-serif;">${tx}</th>`;
-  const thc = tx=>`<th style="padding:8px 10px;text-align:center;color:#00aaff;font-size:10px;text-transform:uppercase;letter-spacing:1px;background:#0b1e45;border-bottom:2px solid #00aaff;font-family:'Barlow Condensed',sans-serif;">${tx}</th>`;
-  const td  = tx=>`<td style="padding:7px 10px;color:#d0d8e8;font-size:12px;border-bottom:1px solid #1a3d6e;">${tx}</td>`;
-  const tdc = tx=>`<td style="padding:7px 10px;color:#d0d8e8;font-size:12px;border-bottom:1px solid #1a3d6e;text-align:center;">${tx}</td>`;
-  const isUnitF = f=>(f.wpu||f.calcMode==='wpu'||f.calcMode==='perUnit');
-  const substTableHTML = pdfSubRows.length
-    ? `<table style="width:100%;border-collapse:collapse;background:#071629;border:1px solid #1a3d6e;">
-        <thead><tr>${th('Alimento Prescrito')}${thc('Qtd.')}${th('Substituto 1 (TACO)')}${thc('Qtd. equiv.')}${th('Substituto 2 (TACO)')}${thc('Qtd. equiv.')}</tr></thead>
-        <tbody>${pdfSubRows.map(r=>{
-          const qStr = r.wpuOverride ? r.qty+' '+(r.unitLabel||'un') : (isUnitF(r.food) ? r.qty+' '+(r.food.unit||'un') : r.qty+'g');
-          const e1 = r.subs[0] ? equivQtyStr(r.food,r.qty,r.subs[0],r.wpuOverride) : '—';
-          const e2 = r.subs[1] ? equivQtyStr(r.food,r.qty,r.subs[1],r.wpuOverride) : '—';
-          return `<tr>${td(r.food.name)}${tdc(qStr)}${td(r.subs[0]?r.subs[0].name:'—')}${tdc(e1)}${td(r.subs[1]?r.subs[1].name:'—')}${tdc(e2)}</tr>`;
-        }).join('')}</tbody>
-      </table>`
-    : '<div style="color:rgba(255,255,255,.3);font-style:italic;padding:12px 0;text-align:center;">Nenhum alimento prescrito na dieta.</div>';
 
   const compHTML = compRows.length
     ? compRows.map(r=>`<tr>${pdfTD(r[0])}${pdfTDC(r[1])}${pdfTDC(r[2])}</tr>`).join('')
@@ -1864,7 +1848,7 @@ function buildPDF(d){
       </div>` : ''}
     </div>
 
-    <div style="position:absolute;bottom:14px;right:24px;font-size:10px;color:rgba(255,255,255,.2);font-family:'Rajdhani',sans-serif;">Versão ${version||1} · ${new Date().toLocaleDateString('pt-BR')} · Página 1/4</div>
+    <div style="position:absolute;bottom:14px;right:24px;font-size:10px;color:rgba(255,255,255,.2);font-family:'Rajdhani',sans-serif;">Versão ${version||1} · ${new Date().toLocaleDateString('pt-BR')} · Página 1/3</div>
     <div style="position:absolute;bottom:0;left:0;right:0;height:4px;background:linear-gradient(90deg,transparent,#00aaff 30%,#0055cc 70%,transparent);"></div>
   </div>
 
@@ -1918,15 +1902,7 @@ function buildPDF(d){
     ${pageFooter(2)}
   </div>
 
-  <!-- PAGE 3: SUBSTITUIÇÕES -->
-  <div class="pb" style="width:794px;min-height:1122px;background:#000;padding:40px;page-break-before:always;position:relative;">
-    ${pgHdr('Alimentos de Substituição')}
-    <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:18px;">Equivalência calórica calculada com base na tabela TACO. Troque pelo substituto na quantidade indicada para manter os macros da dieta.</div>
-    ${substTableHTML}
-    ${pageFooter(3)}
-  </div>
-
-  <!-- PAGE 4: EXTRAS -->
+  <!-- PAGE 3: EXTRAS -->
   <div class="pb" style="width:794px;min-height:1122px;background:#000;padding:40px;page-break-before:always;position:relative;">
     ${pgHdr('Prescrições & Orientações')}
 
@@ -1951,7 +1927,7 @@ function buildPDF(d){
       <div style="background:#071629;border:1px solid #1a3d6e;border-radius:4px;padding:16px;">${obsHTML}</div>
     </div>
 
-    ${pageFooter(4)}
+    ${pageFooter(3)}
   </div>
 
 </div>`;
