@@ -99,8 +99,13 @@ textarea{resize:vertical;min-height:130px;line-height:1.6;}
 /* ===== Food item card (stacked, replaces desktop 7-col grid) ===== */
 .food-item-card{background:#05101f;border:1px solid rgba(26,61,110,.5);border-radius:6px;padding:10px;margin-bottom:8px;}
 .food-item-top{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
-.food-item-top select{flex:1;min-height:44px;font-size:14px;padding:9px 10px;}
+.food-pick-btn{flex:1;min-height:44px;background:#030810;border:1px solid var(--border);color:#fff;border-radius:6px;font-family:'Rajdhani',sans-serif;font-size:14px;padding:9px 12px;text-align:left;display:flex;justify-content:space-between;align-items:center;gap:8px;cursor:pointer;}
+.food-pick-btn:active{border-color:var(--neon);}
+.food-pick-chevron{flex-shrink:0;font-size:13px;opacity:.6;}
 .food-item-qty-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.unit-toggle-row{margin:-2px 0 8px;}
+.unit-override-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.unit-override-row input{flex:1;min-width:80px;min-height:36px;padding:6px 8px;font-size:12px;}
 .food-item-qty-row input{flex:0 0 100px;text-align:center;}
 .food-item-qty-row .unit-tag{font-size:12px;font-family:'Barlow Condensed',sans-serif;font-style:italic;font-weight:700;color:#ffb800;}
 .food-item-macros{display:flex;flex-wrap:wrap;gap:6px 10px;font-size:12px;color:#8fb8de;}

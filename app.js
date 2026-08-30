@@ -1228,14 +1228,76 @@ function renderFoodBank(){
 }
 
 // ===================== MEALS =====================
-function foodOptions(sel){
-  return foods.map((f,i)=>{
-    let tag;
-    if(f.wpu || f.calcMode==='wpu') tag=`por ${f.unit||'un'} (${f.wpu}g)`;
-    else if(f.calcMode==='perUnit') tag=`por ${f.unit||'un'}`;
-    else tag=`por 100${f.unit==='ml'?'ml':'g'}`;
-    return `<option value="${i}"${i===sel?' selected':''}>${f.name} [${tag}]</option>`;
-  }).join('');
+// ===================== FOOD PICKER (busca de alimento ao montar a refeição) =====================
+let foodPickerTarget = null; // {mealId, idx}
+let foodPickerFilter = '';
+
+function openFoodPicker(mealId, idx){
+  foodPickerTarget = {mealId, idx};
+  foodPickerFilter = '';
+  document.getElementById('foodPickerSearch').value = '';
+  renderFoodPickerList();
+  document.getElementById('modalFoodPicker').classList.remove('hidden');
+  document.body.classList.add('modal-open');
+}
+function closeFoodPicker(){
+  document.getElementById('modalFoodPicker').classList.add('hidden');
+  document.body.classList.remove('modal-open');
+  foodPickerTarget = null;
+}
+function setFoodPickerFilter(v){ foodPickerFilter = v.toLowerCase().trim(); renderFoodPickerList(); }
+
+function renderFoodPickerList(){
+  const el = document.getElementById('foodPickerList');
+  if(!foodPickerFilter){
+    el.innerHTML = `<div class="empty-hint">Digite para buscar entre ${foods.length} alimentos...</div>`;
+    return;
+  }
+  const filtered = foods.map((f,i)=>({f,i})).filter(({f})=> f.name.toLowerCase().includes(foodPickerFilter));
+  if(!filtered.length){ el.innerHTML = '<div class="empty-hint">Nenhum alimento encontrado.</div>'; return; }
+
+  const tacoTag = `<span class="tag tag-taco">TACO</span>`;
+  const modeTag = f => {
+    if(f.wpu || f.calcMode==='wpu') return `<span class="tag tag-mode">por ${f.unit||'un'} · ${f.wpu}g</span>`;
+    if(f.calcMode==='perUnit') return `<span class="tag tag-mode">por un.</span>`;
+    return '';
+  };
+  const shown = filtered.slice(0,80);
+  el.innerHTML = shown.map(({f,i})=>`
+      <div class="food-bank-row" onclick="selectFoodForItem(${i})" style="cursor:pointer;">
+        <div class="fb-info">
+          <span class="fb-name">${f.name}</span>${f.taco?tacoTag:''}${modeTag(f)}
+          <div class="fb-macros">${f.cal} kcal | C:${f.carb}g P:${f.prot}g G:${f.fat}g</div>
+        </div>
+      </div>`).join('')
+    + (filtered.length>80 ? `<div class="empty-hint" style="padding:10px;">+${filtered.length-80} resultados — refine a busca</div>` : '');
+}
+function selectFoodForItem(fi){
+  if(!foodPickerTarget) return;
+  setItemFood(foodPickerTarget.mealId, foodPickerTarget.idx, String(fi));
+  closeFoodPicker();
+}
+
+// Prescrição "por unidade" ad hoc (ex: pão por fatia) para qualquer alimento por100g,
+// sem precisar recadastrá-lo com um modo de cálculo fixo.
+function enableItemUnitOverride(mealId, idx){
+  const m=meals.find(m=>m.id===mealId); if(!m) return;
+  m.items[idx].wpuOverride = 0;
+  m.items[idx].unitLabel = 'un';
+  m.items[idx].qty = 1;
+  renderMeals();
+}
+function clearItemUnitOverride(mealId, idx){
+  const m=meals.find(m=>m.id===mealId); if(!m) return;
+  delete m.items[idx].wpuOverride;
+  delete m.items[idx].unitLabel;
+  m.items[idx].qty = 100;
+  renderMeals();
+}
+function setItemUnitOverride(mealId, idx, field, val){
+  const m=meals.find(m=>m.id===mealId); if(!m) return;
+  m.items[idx][field] = field==='wpuOverride' ? (parseFloat(val)||0) : val;
+  renderMeals();
 }
 function addMeal(){
   mealIdCtr++;
@@ -1246,7 +1308,12 @@ function removeMeal(id){ meals=meals.filter(m=>m.id!==id); renderMeals(); }
 function setMealName(id,v){ const m=meals.find(m=>m.id===id); if(m) m.name=v; }
 function setMealTime(id,v){ const m=meals.find(m=>m.id===id); if(m) m.time=v; }
 function setMealNotes(id,v){ const m=meals.find(m=>m.id===id); if(m) m.notes=v; }
-function addItem(mealId){ const m=meals.find(m=>m.id===mealId); if(m){ m.items.push({fi:0,qty:100}); renderMeals(); } }
+function addItem(mealId){
+  const m=meals.find(m=>m.id===mealId); if(!m) return;
+  m.items.push({fi:0,qty:100});
+  renderMeals();
+  openFoodPicker(mealId, m.items.length-1);
+}
 function removeItem(mealId,idx){ const m=meals.find(m=>m.id===mealId); if(m){ m.items.splice(idx,1); renderMeals(); } }
 function setItem(mealId,idx,field,val){
   const m=meals.find(m=>m.id===mealId); if(!m) return;
@@ -1265,7 +1332,8 @@ const EMPTY_TOTALS = {cal:0,carb:0,prot:0,fat:0,fiber:0,sodium:0,calcium:0,iron:
 function calcItem(item){
   const f=foods[item.fi]; if(!f) return {...EMPTY_TOTALS};
   let mult;
-  if(f.wpu || f.calcMode==='wpu') mult = (item.qty * (f.wpu||0)) / 100;
+  if(item.wpuOverride) mult = (item.qty * item.wpuOverride) / 100;
+  else if(f.wpu || f.calcMode==='wpu') mult = (item.qty * (f.wpu||0)) / 100;
   else if(f.calcMode==='perUnit') mult = item.qty;
   else mult = item.qty/100;
   return {
@@ -1295,8 +1363,8 @@ function findTacoSubs(food){
     .slice(0,2)
     .map(x=>x.f);
 }
-function equivQtyStr(origFood, origQty, sub){
-  const cv = calcItem({fi: foods.indexOf(origFood), qty: origQty});
+function equivQtyStr(origFood, origQty, sub, wpuOverride){
+  const cv = calcItem({fi: foods.indexOf(origFood), qty: origQty, wpuOverride});
   const targetCal = cv.cal;
   if(!sub.cal || !targetCal) return '—';
   let qty, unit;
@@ -1317,24 +1385,24 @@ function renderSubstitutions(){
   if(!meals.length){ sec.classList.add('hidden'); return; }
   const seen = new Map();
   meals.forEach(m=>m.items.forEach(it=>{
-    if(!seen.has(it.fi)) seen.set(it.fi, it.qty);
+    if(!seen.has(it.fi)) seen.set(it.fi, {qty:it.qty, wpuOverride:it.wpuOverride, unitLabel:it.unitLabel});
   }));
   const rows = [];
-  seen.forEach((qty,fi)=>{
+  seen.forEach((info,fi)=>{
     const food=foods[fi]; if(!food) return;
     const subs=findTacoSubs(food);
     if(!subs.length) return;
-    rows.push({food,qty,subs});
+    rows.push({food,qty:info.qty,wpuOverride:info.wpuOverride,unitLabel:info.unitLabel,subs});
   });
   if(!rows.length){ sec.classList.add('hidden'); return; }
   sec.classList.remove('hidden');
   const isUnit = f=>(f.wpu||f.calcMode==='wpu'||f.calcMode==='perUnit');
-  const qtyStr = (f,q)=> isUnit(f) ? q+' '+(f.unit||'un') : q+'g';
+  const qtyStr = r=> r.wpuOverride ? r.qty+' '+(r.unitLabel||'un') : (isUnit(r.food) ? r.qty+' '+(r.food.unit||'un') : r.qty+'g');
   document.getElementById('substList').innerHTML = rows.map(r=>`
     <div class="subst-card">
-      <div class="subst-main">${r.food.name} — <span class="qty">${qtyStr(r.food,r.qty)}</span></div>
-      ${r.subs[0] ? `<div class="subst-row"><span>${r.subs[0].name}</span><span class="eq">${equivQtyStr(r.food,r.qty,r.subs[0])}</span></div>` : ''}
-      ${r.subs[1] ? `<div class="subst-row"><span>${r.subs[1].name}</span><span class="eq">${equivQtyStr(r.food,r.qty,r.subs[1])}</span></div>` : ''}
+      <div class="subst-main">${r.food.name} — <span class="qty">${qtyStr(r)}</span></div>
+      ${r.subs[0] ? `<div class="subst-row"><span>${r.subs[0].name}</span><span class="eq">${equivQtyStr(r.food,r.qty,r.subs[0],r.wpuOverride)}</span></div>` : ''}
+      ${r.subs[1] ? `<div class="subst-row"><span>${r.subs[1].name}</span><span class="eq">${equivQtyStr(r.food,r.qty,r.subs[1],r.wpuOverride)}</span></div>` : ''}
     </div>`).join('');
 }
 
@@ -1355,12 +1423,15 @@ function renderMeals(){
       : meal.items.map((item,ii)=>{
           const cv=calcItem(item);
           const fu = foods[item.fi];
-          const funit = fu ? (fu.unit||'g') : 'g';
+          const hasOverride = !!item.wpuOverride;
+          const funit = hasOverride ? (item.unitLabel||'un') : (fu ? (fu.unit||'g') : 'g');
+          const canOfferUnit = fu && fu.calcMode==='per100' && !fu.wpu;
           return `<div class="food-item-card">
             <div class="food-item-top">
-              <select onchange="setItemFood(${meal.id},${ii},this.value)">
-                ${foodOptions(item.fi)}
-              </select>
+              <button type="button" class="food-pick-btn" onclick="openFoodPicker(${meal.id},${ii})">
+                <span>${fu ? fu.name : 'Selecionar alimento...'}</span>
+                <span class="food-pick-chevron">🔍</span>
+              </button>
               <button onclick="removeItem(${meal.id},${ii})" class="btn btn-red btn-icon-only">✕</button>
             </div>
             <div class="food-item-qty-row">
@@ -1368,6 +1439,18 @@ function renderMeals(){
                 onchange="setItem(${meal.id},${ii},'qty',this.value)">
               <span class="unit-tag">${funit}</span>
             </div>
+            ${canOfferUnit ? `
+            <div class="unit-toggle-row">
+              ${hasOverride ? `
+                <div class="unit-override-row">
+                  <input type="number" inputmode="decimal" placeholder="peso/un (g)" value="${item.wpuOverride||''}" min="0" step="0.1"
+                    onchange="setItemUnitOverride(${meal.id},${ii},'wpuOverride',this.value)">
+                  <input type="text" placeholder="fatia, un..." value="${item.unitLabel||''}"
+                    onchange="setItemUnitOverride(${meal.id},${ii},'unitLabel',this.value)">
+                  <button type="button" onclick="clearItemUnitOverride(${meal.id},${ii})" class="link-btn">voltar p/ gramas</button>
+                </div>` : `
+                <button type="button" onclick="enableItemUnitOverride(${meal.id},${ii})" class="link-btn link-btn-blue">⚖ prescrever por unidade (ex: fatia)</button>`}
+            </div>` : ''}
             <div class="food-item-macros">
               <span><b>${f1(cv.cal)}</b> kcal</span>
               <span>C: <b>${f1(cv.carb)}g</b></span>
@@ -1681,8 +1764,8 @@ function buildPDF(d){
     const rows=meal.items.map(item=>{
       const f2=foods[item.fi]; if(!f2) return '';
       const cv=calcItem(item);
-      const isUnitFood = f2.wpu || f2.calcMode==='wpu' || f2.calcMode==='perUnit';
-      const qtyDisplay = isUnitFood ? item.qty+' '+(f2.unit||'un') : item.qty+'g';
+      const isUnitFood = item.wpuOverride || f2.wpu || f2.calcMode==='wpu' || f2.calcMode==='perUnit';
+      const qtyDisplay = isUnitFood ? item.qty+' '+(item.wpuOverride ? (item.unitLabel||'un') : (f2.unit||'un')) : item.qty+'g';
       return `<tr>${pdfTD(f2.name)}${pdfTDC(qtyDisplay)}${pdfTDC(f1(cv.cal))}${pdfTDC(f1(cv.carb)+'g')}${pdfTDC(f1(cv.prot)+'g')}${pdfTDC(f1(cv.fat)+'g')}</tr>`;
     }).join('');
     return `
@@ -1707,13 +1790,13 @@ function buildPDF(d){
   }).join('') || '<div style="color:rgba(255,255,255,.3);text-align:center;padding:30px;font-style:italic;">Nenhuma refeição cadastrada.</div>';
 
   const seenSub = new Map();
-  meals.forEach(m=>m.items.forEach(it=>{ if(!seenSub.has(it.fi)) seenSub.set(it.fi,it.qty); }));
+  meals.forEach(m=>m.items.forEach(it=>{ if(!seenSub.has(it.fi)) seenSub.set(it.fi,{qty:it.qty, wpuOverride:it.wpuOverride, unitLabel:it.unitLabel}); }));
   const pdfSubRows = [];
-  seenSub.forEach((qty,fi)=>{
+  seenSub.forEach((info,fi)=>{
     const food=foods[fi]; if(!food) return;
     const subs=findTacoSubs(food);
     if(!subs.length) return;
-    pdfSubRows.push({food,qty,subs});
+    pdfSubRows.push({food,qty:info.qty,wpuOverride:info.wpuOverride,unitLabel:info.unitLabel,subs});
   });
   const th  = tx=>`<th style="padding:8px 10px;text-align:left;color:#00aaff;font-size:10px;text-transform:uppercase;letter-spacing:1px;background:#0b1e45;border-bottom:2px solid #00aaff;font-family:'Barlow Condensed',sans-serif;">${tx}</th>`;
   const thc = tx=>`<th style="padding:8px 10px;text-align:center;color:#00aaff;font-size:10px;text-transform:uppercase;letter-spacing:1px;background:#0b1e45;border-bottom:2px solid #00aaff;font-family:'Barlow Condensed',sans-serif;">${tx}</th>`;
@@ -1724,9 +1807,9 @@ function buildPDF(d){
     ? `<table style="width:100%;border-collapse:collapse;background:#071629;border:1px solid #1a3d6e;">
         <thead><tr>${th('Alimento Prescrito')}${thc('Qtd.')}${th('Substituto 1 (TACO)')}${thc('Qtd. equiv.')}${th('Substituto 2 (TACO)')}${thc('Qtd. equiv.')}</tr></thead>
         <tbody>${pdfSubRows.map(r=>{
-          const qStr = isUnitF(r.food) ? r.qty+' '+(r.food.unit||'un') : r.qty+'g';
-          const e1 = r.subs[0] ? equivQtyStr(r.food,r.qty,r.subs[0]) : '—';
-          const e2 = r.subs[1] ? equivQtyStr(r.food,r.qty,r.subs[1]) : '—';
+          const qStr = r.wpuOverride ? r.qty+' '+(r.unitLabel||'un') : (isUnitF(r.food) ? r.qty+' '+(r.food.unit||'un') : r.qty+'g');
+          const e1 = r.subs[0] ? equivQtyStr(r.food,r.qty,r.subs[0],r.wpuOverride) : '—';
+          const e2 = r.subs[1] ? equivQtyStr(r.food,r.qty,r.subs[1],r.wpuOverride) : '—';
           return `<tr>${td(r.food.name)}${tdc(qStr)}${td(r.subs[0]?r.subs[0].name:'—')}${tdc(e1)}${td(r.subs[1]?r.subs[1].name:'—')}${tdc(e2)}</tr>`;
         }).join('')}</tbody>
       </table>`
