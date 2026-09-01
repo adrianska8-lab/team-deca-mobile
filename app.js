@@ -687,7 +687,9 @@ let studentFilter = '';
 const PAY_LABEL = {em_dia:'Em dia', a_vencer:'A vencer', inadimplente:'Inadimplente'};
 const PAY_ORDER = {inadimplente:0, a_vencer:1, em_dia:2};
 
-function saveStudentsToStorage(skipPush){ lsSet('td_mobile_students', JSON.stringify(students)); if(!skipPush) fbPush('data/students', {list:students}); }
+// Salvo como string JSON (não {list:students}) porque compounds/ergogenics são array-de-array
+// (ex: [["Creatina","5g","Diário"]]) e o Firestore rejeita arrays aninhados em campos normais.
+function saveStudentsToStorage(skipPush){ lsSet('td_mobile_students', JSON.stringify(students)); if(!skipPush) fbPush('data/students', {json: JSON.stringify(students)}); }
 function genId(){ return 'std_'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 
 function updateStudentStatusLine(){
@@ -1118,13 +1120,19 @@ window.addEventListener('fbAuthChanged', e=>{
 
   window.fbWatchDoc('data/students', (data, pending)=>{
     if(pending) return;
-    if(data && Array.isArray(data.list)){
-      students = data.list;
+    let remoteList = null;
+    if(data && typeof data.json === 'string'){
+      try{ remoteList = JSON.parse(data.json); }catch(e){ console.error('Erro ao ler alunos da nuvem:', e); }
+    } else if(data && Array.isArray(data.list)){
+      remoteList = data.list; // formato antigo, de antes da correção de arrays aninhados
+    }
+    if(Array.isArray(remoteList)){
+      students = remoteList;
       saveStudentsToStorage(true);
       renderStudentsList();
       updateStudentStatusLine();
     } else {
-      fbPush('data/students', {list:students});
+      fbPush('data/students', {json: JSON.stringify(students)});
     }
   });
 
