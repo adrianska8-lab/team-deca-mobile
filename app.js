@@ -1330,9 +1330,21 @@ let foodPickerTarget = null; // {mealId, idx}
 let foodPickerFilter = '';
 
 function openFoodPicker(mealId, idx){
-  foodPickerTarget = {mealId, idx};
+  foodPickerTarget = {mealId, idx, mode:'main'};
   foodPickerFilter = '';
   document.getElementById('foodPickerSearch').value = '';
+  const titleEl = document.getElementById('foodPickerTitle');
+  if(titleEl) titleEl.textContent = '🔍 Escolher Alimento';
+  renderFoodPickerList();
+  document.getElementById('modalFoodPicker').classList.remove('hidden');
+  document.body.classList.add('modal-open');
+}
+function openSubPicker(mealId, idx){
+  foodPickerTarget = {mealId, idx, mode:'sub'};
+  foodPickerFilter = '';
+  document.getElementById('foodPickerSearch').value = '';
+  const titleEl = document.getElementById('foodPickerTitle');
+  if(titleEl) titleEl.textContent = '🔁 Escolher Substituição';
   renderFoodPickerList();
   document.getElementById('modalFoodPicker').classList.remove('hidden');
   document.body.classList.add('modal-open');
@@ -1371,7 +1383,11 @@ function renderFoodPickerList(){
 }
 function selectFoodForItem(fi){
   if(!foodPickerTarget) return;
-  setItemFood(foodPickerTarget.mealId, foodPickerTarget.idx, String(fi));
+  if(foodPickerTarget.mode==='sub'){
+    addItemSub(foodPickerTarget.mealId, foodPickerTarget.idx, fi);
+  } else {
+    setItemFood(foodPickerTarget.mealId, foodPickerTarget.idx, String(fi));
+  }
   closeFoodPicker();
 }
 
@@ -1443,23 +1459,7 @@ function mealTotals(meal){ return meal.items.reduce((a,it)=>{ const c=calcItem(i
 function allTotals(){ return meals.reduce((a,m)=>{ const t=mealTotals(m); Object.keys(EMPTY_TOTALS).forEach(k=>a[k]+=t[k]); return a; },{...EMPTY_TOTALS}); }
 function f1(n){ return (n||0).toFixed(1); }
 
-// ===================== SUBSTITUIÇÕES =====================
-function macroDist(a, b){
-  const ta=(a.prot*4+a.carb*4+a.fat*9)||a.cal||1;
-  const tb=(b.prot*4+b.carb*4+b.fat*9)||b.cal||1;
-  const dp=a.prot*4/ta - b.prot*4/tb;
-  const dc=a.carb*4/ta - b.carb*4/tb;
-  const df=a.fat*9/ta  - b.fat*9/tb;
-  return Math.sqrt(dp*dp + dc*dc + df*df);
-}
-function findTacoSubs(food){
-  return foods
-    .filter(f=>f.taco && f.name!==food.name && f.cal>0)
-    .map(f=>({f, d:macroDist(food,f)}))
-    .sort((a,b)=>a.d-b.d)
-    .slice(0,2)
-    .map(x=>x.f);
-}
+// ===================== SUBSTITUIÇÕES (escolhidas manualmente pelo treinador) =====================
 function equivQtyStr(origFood, origQty, sub, wpuOverride){
   const cv = calcItem({fi: foods.indexOf(origFood), qty: origQty, wpuOverride});
   const targetCal = cv.cal;
@@ -1477,13 +1477,29 @@ function equivQtyStr(origFood, origQty, sub, wpuOverride){
   }
   return qty+' '+unit;
 }
-// Substituições calculadas por item, exibidas direto na refeição (no app e no PDF) em vez de
-// numa lista separada — assim o aluno vê a troca junto do alimento, sem precisar ir a outro lugar.
+// Substituições escolhidas manualmente pelo treinador por item (item.subs = array de índices
+// em `foods`), exibidas direto na refeição (no app e no PDF) em vez de numa lista separada —
+// assim o aluno vê a troca junto do alimento, sem precisar ir a outro lugar.
 function substLineForItem(item){
+  if(!item.subs || !item.subs.length) return '';
   const food = foods[item.fi]; if(!food) return '';
-  const subs = findTacoSubs(food);
-  if(!subs.length) return '';
-  return subs.map(s=>`${s.name} (${equivQtyStr(food,item.qty,s,item.wpuOverride)})`).join(' · ');
+  return item.subs.map(fi=>{
+    const s = foods[fi]; if(!s) return null;
+    return `${s.name} (${equivQtyStr(food,item.qty,s,item.wpuOverride)})`;
+  }).filter(Boolean).join(' · ');
+}
+function addItemSub(mealId, idx, fi){
+  const m=meals.find(m=>m.id===mealId); if(!m) return;
+  const item = m.items[idx]; if(!item) return;
+  item.subs = item.subs || [];
+  if(fi!==item.fi && !item.subs.includes(fi)) item.subs.push(fi);
+  renderMeals();
+}
+function removeItemSub(mealId, idx, subIdx){
+  const m=meals.find(m=>m.id===mealId); if(!m) return;
+  const item = m.items[idx]; if(!item || !item.subs) return;
+  item.subs.splice(subIdx,1);
+  renderMeals();
 }
 
 function renderMeals(){
@@ -1505,7 +1521,13 @@ function renderMeals(){
           const hasOverride = !!item.wpuOverride;
           const funit = hasOverride ? (item.unitLabel||'un') : (fu ? (fu.unit||'g') : 'g');
           const canOfferUnit = fu && fu.calcMode==='per100' && !fu.wpu;
-          const subsLine = substLineForItem(item);
+          const subsChips = (item.subs||[]).map((fi,si)=>{
+            const s = foods[fi]; if(!s || !fu) return '';
+            return `<div class="subst-chip">
+              <span>🔄 ${s.name} <i>(${equivQtyStr(fu,item.qty,s,item.wpuOverride)})</i></span>
+              <button type="button" onclick="removeItemSub(${meal.id},${ii},${si})" class="link-btn">✕</button>
+            </div>`;
+          }).join('');
           return `<div class="food-item-card">
             <div class="food-item-top">
               <button type="button" class="food-pick-btn" onclick="openFoodPicker(${meal.id},${ii})">
@@ -1537,7 +1559,10 @@ function renderMeals(){
               <span>P: <b>${f1(cv.prot)}g</b></span>
               <span>G: <b>${f1(cv.fat)}g</b></span>
             </div>
-            ${subsLine ? `<div class="food-item-subs">🔄 ${subsLine}</div>` : ''}
+            <div class="food-item-subs">
+              ${subsChips}
+              <button type="button" onclick="openSubPicker(${meal.id},${ii})" class="link-btn link-btn-blue">+ substituição</button>
+            </div>
           </div>`;
         }).join('');
     return `<div class="meal-card">

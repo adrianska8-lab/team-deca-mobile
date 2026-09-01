@@ -126,7 +126,9 @@ textarea{resize:vertical;min-height:130px;line-height:1.6;}
 .day-chip.active{background:linear-gradient(135deg,#003d82,#0066cc);border-color:var(--neon);color:#fff;box-shadow:0 0 10px rgba(0,170,255,.35);}
 
 /* ===== Substituição inline (por item, dentro da própria refeição) ===== */
-.food-item-subs{margin-top:6px;font-size:11px;color:rgba(255,255,255,.4);font-style:italic;line-height:1.4;}
+.food-item-subs{margin-top:8px;display:flex;flex-direction:column;gap:6px;align-items:flex-start;}
+.subst-chip{width:100%;display:flex;justify-content:space-between;align-items:center;gap:8px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;color:rgba(255,255,255,.55);}
+.subst-chip i{color:rgba(255,255,255,.35);font-style:normal;}
 
 /* ===== Entry rows (compounds / ergogenics) ===== */
 .entry-row{background:var(--db);border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;}
